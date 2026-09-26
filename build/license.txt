@@ -1,0 +1,30 @@
+Tessarok
+Terms & Conditions
+Version 1.0.0 · Last updated August 21, 2026
+
+1. Acceptance of terms
+By installing, downloading, or using Tessarok ("the Software"), you agree to these Terms & Conditions. If you do not agree, do not install or use the Software.
+
+2. License
+Subject to these terms, you are granted a personal, non-exclusive, non-transferable license to install and use the Software on devices you own or control for your own projects and team work. You may not reverse engineer, redistribute, or sell the Software except as permitted by applicable open-source licenses that accompany specific components.
+
+3. Local-first data
+The Software is designed to store projects, documents, conversations, settings, and related data locally on your device. You are responsible for backing up that data. We do not operate a cloud account for your workspace content.
+
+4. AI providers and API keys
+Optional AI features require you to supply your own API keys or connect a local model provider (such as Ollama). Keys are stored on your device using the operating system's secure storage when available. AI requests are sent only when you trigger an AI action, and only to the providers you configure. You are responsible for compliance with those providers' terms and for any usage charges.
+
+5. Acceptable use
+You agree not to use the Software for unlawful purposes, to generate or process content you do not have rights to, or in any way that harms others or violates third-party rights. You are solely responsible for content you create, import, or export.
+
+6. Disclaimer of warranties
+The Software is provided "as is" without warranties of any kind, express or implied, including merchantability, fitness for a particular purpose, and non-infringement. AI-generated output may be inaccurate; you must review it before relying on it.
+
+7. Limitation of liability
+To the maximum extent permitted by law, the authors and distributors of the Software are not liable for any indirect, incidental, special, consequential, or punitive damages, or for loss of data, profits, or business, arising from your use of the Software.
+
+8. Changes
+These terms may be updated when the Software is updated. Continued use after an update that presents a new terms version constitutes acceptance of the revised terms. The version shown during setup is the version you accepted.
+
+9. Contact
+For questions about these terms or the Software, refer to the project documentation bundled with the application or the repository maintainers.

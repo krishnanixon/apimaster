@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: presentation-asset:; font-src 'self' data:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' https: ws: wss: http://localhost:* http://127.0.0.1:*"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="./tess.png" />
+    <title>Tessarok</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #faf9f5;
+        color: #141413;
+        font-family: Inter, ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+      }
+      html.dark,
+      html.dark body {
+        background: #262624;
+        color: #fafafa;
+      }
+      #root {
+        height: 100%;
+        min-height: 100%;
+      }
+      .boot-screen {
+        box-sizing: border-box;
+        display: flex;
+        height: 100%;
+        min-height: 100vh;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background: inherit;
+        color: inherit;
+        user-select: none;
+        animation: boot-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      .boot-brand {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+      .boot-logo {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        object-fit: cover;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+        animation: boot-breathe 2.4s ease-in-out infinite;
+      }
+      .boot-title {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+      .boot-progress {
+        position: relative;
+        width: 112px;
+        height: 2px;
+        overflow: hidden;
+        border-radius: 9999px;
+        background: currentColor;
+        opacity: 0.14;
+      }
+      .boot-progress::after {
+        content: '';
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 42%;
+        border-radius: inherit;
+        background: currentColor;
+        opacity: 0.85;
+        animation: boot-progress 1.15s ease-in-out infinite;
+      }
+      .boot-message {
+        margin: 0;
+        min-height: 1.25em;
+        font-size: 13px;
+        opacity: 0.55;
+        animation: boot-message-pulse 2s ease-in-out infinite;
+      }
+      @keyframes boot-enter {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      @keyframes boot-breathe {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 0.88;
+        }
+        50% {
+          transform: scale(1.05);
+          opacity: 1;
+        }
+      }
+      @keyframes boot-progress {
+        0% {
+          transform: translateX(-110%);
+        }
+        100% {
+          transform: translateX(280%);
+        }
+      }
+      @keyframes boot-message-pulse {
+        0%,
+        100% {
+          opacity: 0.45;
+        }
+        50% {
+          opacity: 0.7;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-screen,
+        .boot-logo,
+        .boot-progress::after,
+        .boot-message {
+          animation: none;
+        }
+        .boot-message {
+          opacity: 0.62;
+        }
+      }
+    </style>
+    <script>
+      ;(function () {
+        try {
+          var stored = localStorage.getItem('aws-color-mode')
+          var dark =
+            stored === 'dark' ||
+            (stored !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.classList.toggle('dark', dark)
+        } catch (e) {}
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root">
+      <div class="boot-screen" role="status" aria-live="polite" aria-busy="true">
+        <div class="boot-brand">
+          <img class="boot-logo" src="./tess.png" alt="Tessarok" width="48" height="48" />
+          <p class="boot-title">Tessarok</p>
+        </div>
+        <div class="boot-progress" aria-hidden="true"></div>
+        <p class="boot-message" id="boot-message">Loading…</p>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+out/
+dist/
+release/
+generated/
+*.tsbuildinfo
+
+# Stale tsc artifacts (source lives in .ts files)
+electron/**/*.js
+electron/**/*.d.ts
+shared/**/*.js
+shared/**/*.d.ts
+src/modules/vps-manager/**/*.js
+src/modules/vps-manager/**/*.d.ts
+src/modules/clipboard-manager/**/*.js
+src/modules/clipboard-manager/**/*.d.ts
+electron.vite.config.js
+electron.vite.config.d.ts
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+prisma/dev.db
+prisma/dev.db-journal
+*.db
+*.db-journal
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Test
+coverage/
+
+# Electron
+*.exe
+*.dmg
+*.AppImage

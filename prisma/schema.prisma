@@ -1,0 +1,589 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String   @default("")
+  style       String   @default("professional") // basic | professional | enterprise
+  status      String   @default("active") // active | archived
+  companyName String   @default("")
+  companyLogo String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastOpenedAt DateTime @default(now())
+
+  conversations Conversation[]
+  documents     Document[]
+  settings      ProjectSettings?
+  knowledge     RequirementKnowledge?
+  stakeholders  Stakeholder[]
+  modules       Module[]
+  features      Feature[]
+  requirements  Requirement[]
+  businessRules BusinessRule[]
+  workflows     Workflow[]
+  entities      Entity[]
+  apiEndpoints  APIEndpoint[]
+  roles         Role[]
+  integrations  Integration[]
+  reports       Report[]
+  risks         Risk[]
+  assumptions   Assumption[]
+  decisions     Decision[]
+  knowledgeLinks KnowledgeLink[]
+  flowDiagrams  FlowDiagram[]
+  architectures ArchitectureDiagram[]
+  presentations Presentation[]
+
+  @@index([status])
+  @@index([lastOpenedAt])
+}
+
+model ArchitectureDiagram {
+  id          String   @id @default(uuid())
+  projectId   String
+  title       String   @default("Untitled Architecture")
+  description String   @default("")
+  systemType  String   @default("web")
+  model       String   @default("{}")
+  viewState   String   @default("{}")
+  versions    String   @default("[]")
+  isPinned    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([systemType])
+}
+
+model FlowDiagram {
+  id          String   @id @default(uuid())
+  projectId   String
+  title       String   @default("Untitled Flow")
+  description String   @default("")
+  category    String   @default("process")
+  nodes       String   @default("[]")
+  edges       String   @default("[]")
+  viewport    String   @default("{}")
+  layoutState String   @default("{}")
+  isPinned    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([category])
+}
+
+model Presentation {
+  id          String   @id @default(uuid())
+  projectId   String
+  title       String   @default("Untitled Presentation")
+  description String   @default("")
+  themeId     String   @default("professional")
+  cards       String   @default("[]")
+  viewState   String   @default("{}")
+  versions    String   @default("[]")
+  documentJson String  @default("")
+  schemaVersion Int    @default(0)
+  templateId   String  @default("")
+  isFavorite   Boolean @default(false)
+  deletedAt    DateTime?
+  isPinned    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([projectId, deletedAt])
+}
+
+model ProjectSettings {
+  id              String  @id @default(uuid())
+  projectId       String  @unique
+  aiModel         String  @default("gpt-4o-mini")
+  temperature     Float   @default(0.7)
+  maxTokens       Int     @default(4096)
+  systemPrompt    String  @default("")
+  brandingPrimary String  @default("#2563eb")
+  brandingAccent  String  @default("#1e40af")
+  documentGenerationRules String @default("")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id        String   @id @default(uuid())
+  scope     String   @default("PROJECT") // GLOBAL | PROJECT
+  projectId String?
+  title     String   @default("New Conversation")
+  isPinned  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project  Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([projectId])
+  @@index([scope])
+  @@index([isPinned])
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  role           String   // user | assistant | system
+  content        String
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+model Document {
+  id          String   @id @default(uuid())
+  projectId   String
+  title       String   @default("Untitled Document")
+  type        String   @default("requirements") // discovery | brd | requirements | functional | non_functional | scope | product_definition | prd | user_stories | ui_ux | architecture | technical_design | database_schema | api_spec | timeline | risks | testing | uat | deployment | release_notes | user_guide | handover | change_request | contract | proposal | estimation_report
+  style       String   @default("professional")
+  pageTheme   String   @default("professional") // professional | modern | soft-ui | corporate | classic
+  layoutPreset String  @default("normal") // normal | narrow | wide | compact | comfortable | manuscript | custom
+  paddingTop    Int    @default(56)
+  paddingRight  Int    @default(64)
+  paddingBottom Int    @default(72)
+  paddingLeft   Int    @default(64)
+  pageSettings  String @default("{}") // JSON: page size, orientation, header/footer
+  commentsJson  String @default("[]") // JSON comment threads
+  content     String   @default("") // JSON Tiptap content
+  htmlContent String   @default("")
+  isPinned    Boolean  @default(false)
+  status      String   @default("draft") // draft | review | approved | superseded
+  tags        String   @default("[]")
+  lastReviewedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project  Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  versions DocumentVersion[]
+
+  @@index([projectId])
+  @@index([type])
+}
+
+model DocumentVersion {
+  id         String   @id @default(uuid())
+  documentId String
+  version    Int
+  content    String
+  htmlContent String  @default("")
+  label      String   @default("")
+  createdAt  DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, version])
+  @@index([documentId])
+}
+
+model AppSettings {
+  id            String  @id @default("app")
+  theme         String  @default("system") // light | dark | system
+  aiModel       String  @default("gpt-4o-mini")
+  temperature   Float   @default(0.7)
+  maxTokens     Int     @default(4096)
+  autoSaveMs    Int     @default(3000)
+  recentProjectIds String @default("[]") // JSON array
+  exportDefaultFormat String @default("pdf") // pdf | docx
+  exportIncludeCoverPage Boolean @default(true)
+  exportIncludeTableOfContents Boolean @default(true)
+  exportIncludePageNumbers Boolean @default(true)
+  exportIncludeHeaderFooter Boolean @default(true)
+  exportCoverStyle String @default("modern")
+  exportTocStyle String @default("classic")
+  exportPageNumberStyle String @default("page-total")
+  exportHeaderFooterStyle String @default("standard")
+  exportIncludeLogo Boolean @default(true)
+  exportCoverAccent String @default("")
+  exportCoverSubtitle String @default("")
+  exportPreparedBy String @default("")
+  exportIncludeWatermark Boolean @default(false)
+  exportWatermarkStyle String @default("confidential")
+  exportWatermarkText String @default("")
+  exportClassification String @default("none")
+  exportPageSize String @default("letter")
+  exportOrientation String @default("portrait")
+  exportCoverBackground String @default("")
+  exportCoverOverlay Int @default(40)
+  exportCoverFont String @default("")
+  exportImageQuality String @default("standard")
+  exportFolderPath String @default("")
+  documentWorkflowMode String @default("simple") // simple | expert
+  documentGenerationRules String @default("")
+}
+
+model ApiUsage {
+  id               String   @id @default(uuid())
+  projectId        String?
+  feature          String   @default("chat") // chat | generate | edit-* | estimation | flow | validation | knowledge | title
+  model            String   @default("")
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  totalTokens      Int      @default(0)
+  estimatedCost    Float    @default(0)
+  createdAt        DateTime @default(now())
+
+  @@index([projectId])
+  @@index([createdAt])
+  @@index([model])
+}
+
+model SearchIndex {
+  id        String   @id @default(uuid())
+  entityType String  // document | conversation | message | knowledge_*
+  entityId  String
+  projectId String
+  title     String   @default("")
+  content   String   @default("")
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([entityType, entityId])
+}
+
+model RequirementKnowledge {
+  id             String   @id @default(uuid())
+  projectId      String   @unique
+  projectSummary String   @default("")
+  businessType   String   @default("")
+  industry       String   @default("")
+  targetUsers    String   @default("")
+  goals          String   @default("[]")
+  scope          String   @default("")
+  outOfScope     String   @default("")
+  vision         String   @default("")
+  objectives     String   @default("[]")
+  notes          String   @default("")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Stakeholder {
+  id              String    @id @default(uuid())
+  projectId       String
+  name            String
+  role            String    @default("")
+  responsibilities String   @default("")
+  contactNotes    String    @default("")
+  sortOrder       Int       @default(0)
+  notes           String    @default("")
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Module {
+  id          String    @id @default(uuid())
+  projectId   String
+  title       String
+  description String    @default("")
+  priority    String    @default("medium")
+  status      String    @default("planned")
+  sortOrder   Int       @default(0)
+  notes       String    @default("")
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  features Feature[]
+
+  @@index([projectId])
+}
+
+model Feature {
+  id          String    @id @default(uuid())
+  projectId   String
+  moduleId    String?
+  title       String
+  description String    @default("")
+  complexity  String    @default("medium")
+  priority    String    @default("medium")
+  status      String    @default("planned")
+  sortOrder   Int       @default(0)
+  notes       String    @default("")
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  module  Module? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([moduleId])
+}
+
+model Requirement {
+  id                 String    @id @default(uuid())
+  projectId          String
+  code               String    @default("")
+  title              String
+  description        String    @default("")
+  type               String    @default("functional")
+  moduleId           String?
+  featureId          String?
+  priority           String    @default("medium")
+  acceptanceCriteria String    @default("[]")
+  dependencies       String    @default("[]")
+  tags               String    @default("[]")
+  status             String    @default("draft")
+  nfrCategory        String    @default("")
+  sortOrder          Int       @default(0)
+  notes              String    @default("")
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([type])
+}
+
+model BusinessRule {
+  id          String    @id @default(uuid())
+  projectId   String
+  title       String
+  description String    @default("")
+  moduleId    String?
+  sortOrder   Int       @default(0)
+  notes       String    @default("")
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Workflow {
+  id          String    @id @default(uuid())
+  projectId   String
+  title       String
+  description String    @default("")
+  flowData    String    @default("[]")
+  moduleId    String?
+  sortOrder   Int       @default(0)
+  notes       String    @default("")
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Entity {
+  id            String    @id @default(uuid())
+  projectId     String
+  name          String
+  fields        String    @default("[]")
+  relationships String    @default("[]")
+  indexes       String    @default("[]")
+  sortOrder     Int       @default(0)
+  notes         String    @default("")
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model APIEndpoint {
+  id             String    @id @default(uuid())
+  projectId      String
+  method         String    @default("GET")
+  path           String
+  description    String    @default("")
+  request        String    @default("{}")
+  response       String    @default("{}")
+  authentication String    @default("")
+  validation     String    @default("")
+  sortOrder      Int       @default(0)
+  notes          String    @default("")
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Role {
+  id           String    @id @default(uuid())
+  projectId    String
+  name         String
+  description  String    @default("")
+  permissions  String    @default("[]")
+  modules      String    @default("[]")
+  restrictions String    @default("[]")
+  sortOrder    Int       @default(0)
+  notes        String    @default("")
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Integration {
+  id          String    @id @default(uuid())
+  projectId   String
+  name        String
+  description String    @default("")
+  type        String    @default("")
+  config      String    @default("{}")
+  sortOrder   Int       @default(0)
+  notes       String    @default("")
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Report {
+  id          String    @id @default(uuid())
+  projectId   String
+  title       String
+  description String    @default("")
+  moduleId    String?
+  sortOrder   Int       @default(0)
+  notes       String    @default("")
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Risk {
+  id          String    @id @default(uuid())
+  projectId   String
+  title       String
+  description String    @default("")
+  severity    String    @default("medium")
+  likelihood  String    @default("medium")
+  mitigation  String    @default("")
+  sortOrder   Int       @default(0)
+  notes       String    @default("")
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Assumption {
+  id          String    @id @default(uuid())
+  projectId   String
+  title       String
+  description String    @default("")
+  sortOrder   Int       @default(0)
+  notes       String    @default("")
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Decision {
+  id          String    @id @default(uuid())
+  projectId   String
+  title       String
+  decision    String    @default("")
+  reason      String    @default("")
+  category    String    @default("")
+  sortOrder   Int       @default(0)
+  notes       String    @default("")
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model KnowledgeLink {
+  id           String   @id @default(uuid())
+  projectId    String
+  sourceType   String
+  sourceId     String
+  targetType   String
+  targetId     String
+  relationType String   @default("relates_to")
+  createdAt    DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([sourceType, sourceId])
+  @@index([targetType, targetId])
+}
+
+model VoiceMemory {
+  id        String   @id @default(uuid())
+  topic     String   @default("")
+  content   String
+  projectId String?
+  source    String   @default("spoken")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([updatedAt])
+}
+
+model VoiceConversationRecord {
+  id        String   @id @default(uuid())
+  title     String   @default("New conversation")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  payload   String   @default("{}")
+
+  @@index([updatedAt])
+}

@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@main/*": ["electron/main/*"],
+      "@shared/*": ["shared/*"],
+      "@vps/*": ["src/modules/vps-manager/*"],
+      "@clipboard/*": ["src/modules/clipboard-manager/*"],
+      "@prisma/*": ["generated/prisma/*"]
+    },
+    "types": ["node"]
+  },
+  "include": [
+    "electron.vite.config.ts",
+    "electron/main/**/*",
+    "electron/preload/**/*",
+    "shared/**/*",
+    "prisma/**/*",
+    "src/modules/vps-manager/core/**/*",
+    "src/modules/clipboard-manager/**/*"
+  ]
+}
