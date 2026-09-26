@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Clock, HardDrive, Download, FilePlus, ChevronDown, Send, Copy, CheckCircle2, XCircle, Sparkles } from 'lucide-react'
+import { Clock, HardDrive, Download, ChevronDown, Send, Copy, CheckCircle2, XCircle, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import ReactMarkdown from 'react-markdown'
 import { Badge } from '@/shared/components/ui/badge'
@@ -15,8 +15,8 @@ import {
 } from '@/shared/components/ui/dropdown-menu'
 import { cn } from '@/shared/lib/utils'
 import { useApiStudioStore } from '../stores/apiStudioStore'
-import { useProjectStore } from '@/shared/stores/project.store'
 import { ResponseBodyView } from './response/ResponseBodyView'
+import { GraphQLErrorsView } from './response/GraphQLErrorsView'
 import { useApiStudioAi } from '../hooks/useApiStudioAi'
 import type { ResponseTab } from '../types/api.types'
 
@@ -51,9 +51,6 @@ export function ResponseViewer({ tabId }: { tabId: string }) {
   const tab = useApiStudioStore((s) => s.tabs.find((t) => t.id === tabId))
   const setResponseView = useApiStudioStore((s) => s.setResponseView)
   const saveResponseToFile = useApiStudioStore((s) => s.saveResponseToFile)
-  const createDocumentFromResponse = useApiStudioStore((s) => s.createDocumentFromResponse)
-  const sendTabRequest = useApiStudioStore((s) => s.sendTabRequest)
-  const { projects, currentProject, loadProjects } = useProjectStore()
   const ai = useApiStudioAi(tabId)
   const [explainOpen, setExplainOpen] = useState(false)
   const [explanation, setExplanation] = useState('')
@@ -66,8 +63,13 @@ export function ResponseViewer({ tabId }: { tabId: string }) {
   const passedTests = tab.testResults.filter((t) => t.passed).length
   const failedTests = tab.testResults.length - passedTests
   const showTestsTab = tab.testResults.length > 0 || Boolean(tab.request.tests?.trim())
+  const isGraphQL = Boolean(response?.graphql) || tab.request.requestType === 'graphql'
   const activeView: ResponseTab =
-    tab.responseView === 'tests' && !showTestsTab ? 'body' : tab.responseView
+    tab.responseView === 'tests' && !showTestsTab
+      ? 'body'
+      : tab.responseView === 'errors' && !isGraphQL
+        ? 'body'
+        : tab.responseView
 
   function copyText(label: string, value: string) {
     void navigator.clipboard.writeText(value)
@@ -82,13 +84,26 @@ export function ResponseViewer({ tabId }: { tabId: string }) {
         {response && (
           <div className="ml-auto flex items-center gap-2">
             {response.status > 0 ? (
-              <Badge variant={statusVariant(response.status)} className="h-5 px-1.5 font-mono text-[10px]">
+              <Badge
+                variant={response.graphql?.hasErrors ? 'warning' : statusVariant(response.status)}
+                className="h-5 px-1.5 font-mono text-[10px]"
+              >
                 {response.status} {response.statusText}
               </Badge>
             ) : (
               <Badge variant="destructive" className="h-5 text-[10px]">
                 {response.error ?? 'Failed'}
               </Badge>
+            )}
+            {response.graphql && (
+              <Badge variant={response.graphql.hasErrors ? 'destructive' : 'success'} className="h-5 px-1.5 text-[10px]">
+                {response.graphql.hasErrors ? 'GraphQL errors' : 'GraphQL OK'}
+              </Badge>
+            )}
+            {response.graphql?.hint && (
+              <span className="max-w-[220px] truncate text-[10px] text-amber-600 dark:text-amber-400" title={response.graphql.hint}>
+                {response.graphql.hint}
+              </span>
             )}
             <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground" title="Round-trip time">
               <Clock className="h-3 w-3" /> {response.timeMs}ms
@@ -124,7 +139,7 @@ export function ResponseViewer({ tabId }: { tabId: string }) {
               {ai.busy ? <Spinner size="sm" /> : <Sparkles className="h-3 w-3" />}
               Explain
             </Button>
-            <DropdownMenu onOpenChange={(open) => open && void loadProjects()}>
+            <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" title="Save response">
                   <ChevronDown className="h-3 w-3" />
@@ -134,11 +149,6 @@ export function ResponseViewer({ tabId }: { tabId: string }) {
                 <DropdownMenuItem onSelect={() => void saveResponseToFile(tabId)}>
                   <Download className="h-3.5 w-3.5" /> Save to file
                 </DropdownMenuItem>
-                {(projects.length > 0 ? projects : currentProject ? [currentProject] : []).map((p) => (
-                  <DropdownMenuItem key={p.id} onSelect={() => void createDocumentFromResponse(tabId, p.id)}>
-                    <FilePlus className="h-3.5 w-3.5" /> Doc → {p.name}
-                  </DropdownMenuItem>
-                ))}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -168,8 +178,10 @@ export function ResponseViewer({ tabId }: { tabId: string }) {
       ) : (
         <>
           <div className="flex shrink-0 items-center gap-0 border-b border-border/40 px-1">
-            {(['body', 'headers', 'cookies', 'tests'] as ResponseTab[]).map((view) => {
+            {(['body', 'errors', 'headers', 'cookies', 'tests'] as ResponseTab[]).map((view) => {
               if (view === 'tests' && !showTestsTab) return null
+              if (view === 'errors' && !response?.graphql) return null
+              const label = view === 'body' && response?.graphql ? 'Data' : view === 'errors' ? 'Errors' : view
               return (
                 <button
                   key={view}
@@ -182,7 +194,10 @@ export function ResponseViewer({ tabId }: { tabId: string }) {
                       : 'border-transparent text-muted-foreground hover:text-foreground'
                   )}
                 >
-                  {view}
+                  {label}
+                  {view === 'errors' && response?.graphql?.errors.length ? (
+                    <span className="ml-1 text-[10px] text-destructive">{response.graphql.errors.length}</span>
+                  ) : null}
                   {view === 'headers' && headerEntries.length > 0 && (
                     <span className="ml-1 text-[10px] text-muted-foreground">{headerEntries.length}</span>
                   )}
@@ -200,7 +215,21 @@ export function ResponseViewer({ tabId }: { tabId: string }) {
           </div>
 
           <div className="min-h-0 flex-1 overflow-hidden">
-            {activeView === 'body' && <ResponseBodyView response={response} />}
+            {activeView === 'body' && (
+              <ResponseBodyView
+                response={
+                  response.graphql && !response.graphql.parseError
+                    ? {
+                        ...response,
+                        data: JSON.stringify(response.graphql.data, null, 2),
+                        contentType: 'application/json',
+                        isBinary: false
+                      }
+                    : response
+                }
+              />
+            )}
+            {activeView === 'errors' && response.graphql && <GraphQLErrorsView info={response.graphql} />}
             {activeView === 'headers' && (
               <ScrollArea className="h-full">
                 <div className="divide-y divide-border/40 p-2">

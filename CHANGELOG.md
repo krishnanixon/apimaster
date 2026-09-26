@@ -2,6 +2,16 @@
 
 All notable product changes and behavior changes are recorded here.
 
+## Unreleased
+
+- Rebranded the app to APIMaster and switched the desktop/UI logo to `public/apimaster.png`.
+- New data folder: `apimaster` (collections from previous app names are not migrated).
+- Split into a standalone API client. All other modules (chat, documents, knowledge,
+  flows, architecture, presentations, code editor, terminal, database/vector/RAG studios,
+  VPS, vault, notepad, clipboard, voice) were removed.
+- Replaced the Prisma/SQLite database with JSON files for settings and AI usage.
+- Single main window with a slim title bar (Requests, Bug Reports, Settings).
+
 ## 1.0.0 - 2026-08-24
 
 ### Added

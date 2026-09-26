@@ -49,12 +49,13 @@ class OnboardingService {
     )
   }
 
+  /** Also used to re-accept updated terms, so an earlier setup date is kept. */
   acceptTermsAndComplete(termsVersion = TERMS_VERSION): OnboardingState {
     const now = new Date().toISOString()
     const state: OnboardingState = {
       termsVersion,
       termsAcceptedAt: now,
-      setupCompletedAt: now
+      setupCompletedAt: this.get().setupCompletedAt ?? now
     }
     writeFileSync(storePath(), JSON.stringify(state, null, 2), 'utf-8')
     return state

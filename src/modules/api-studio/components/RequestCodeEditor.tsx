@@ -24,6 +24,12 @@ interface RequestCodeEditorProps {
   showFormat?: boolean
   /** Show copy button in the editor toolbar. Defaults to true. */
   showCopy?: boolean
+  /** Extra CodeMirror extensions. Used by the GraphQL editor without changing JSON/text editors. */
+  extraExtensions?: Extension[]
+  /** Custom formatter. Return null when the text cannot be formatted. */
+  formatText?: (value: string) => string | null
+  formatTitle?: string
+  autocomplete?: boolean
 }
 
 function formatJson(value: string): string | null {
@@ -47,14 +53,20 @@ export function RequestCodeEditor({
   readOnly = false,
   label,
   showFormat = false,
-  showCopy = true
+  showCopy = true,
+  extraExtensions,
+  formatText,
+  formatTitle = 'Format',
+  autocomplete = false
 }: RequestCodeEditorProps) {
   const theme = useApiStudioEditorTheme()
   const asyncLang = useLanguageExtension(languageFile)
   const isJson = languageFile?.endsWith('.json') ?? false
   const editorAreaRef = useRef<HTMLDivElement>(null)
   const onChangeRef = useRef(onChange)
+  const formatTextRef = useRef(formatText)
   onChangeRef.current = onChange
+  formatTextRef.current = formatText
 
   const [editorHeight, setEditorHeight] = useState(0)
 
@@ -82,13 +94,14 @@ export function RequestCodeEditor({
   function applyFormat(current: string): boolean {
     const change = onChangeRef.current
     if (!change) return false
-    const formatted = formatJson(current)
+    const formatter = formatTextRef.current
+    const formatted = formatter ? formatter(current) : formatJson(current)
     if (formatted === null) {
-      toast.error('Invalid JSON — cannot format')
+      toast.error(formatter ? 'Could not format' : 'Invalid JSON — cannot format')
       return false
     }
     if (formatted !== current) change(formatted)
-    toast.success('JSON formatted')
+    toast.success(formatter ? 'Formatted' : 'JSON formatted')
     return true
   }
 
@@ -134,8 +147,10 @@ export function RequestCodeEditor({
     if (placeholder) list.push(placeholderExt(placeholder))
     if (isJson) list.push(json())
     else if (asyncLang) list.push(asyncLang)
+    if (extraExtensions?.length) list.push(...extraExtensions)
 
-    if (showFormat && isJson && !readOnly) {
+    const canFormat = showFormat && !readOnly && (isJson || Boolean(formatTextRef.current))
+    if (canFormat) {
       list.push(
         keymap.of([
           {
@@ -156,7 +171,7 @@ export function RequestCodeEditor({
       )
     }
     return list
-  }, [asyncLang, isJson, label, placeholder, readOnly, showFormat])
+  }, [asyncLang, extraExtensions, isJson, label, placeholder, readOnly, showFormat])
 
   const displayLabel = label ?? (isJson ? 'JSON' : languageFile?.replace(/^.*\./, '').toUpperCase())
   const resolvedHeight = editorHeight > 0 ? editorHeight : Number.parseInt(minHeight, 10) || 120
@@ -188,14 +203,14 @@ export function RequestCodeEditor({
                 Copy
               </Button>
             )}
-            {showFormat && isJson && !readOnly && onChange && (
+            {showFormat && !readOnly && onChange && (isJson || formatText) && (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 className="h-6 gap-1 px-2 text-[11px] text-muted-foreground hover:text-foreground"
                 onClick={() => applyFormat(value)}
-                title="Format JSON (⇧⌥F)"
+                title={formatTitle}
               >
                 <Wand2 className="h-3 w-3" />
                 Format
@@ -216,13 +231,13 @@ export function RequestCodeEditor({
             onChange={readOnly ? undefined : onChange}
             basicSetup={{
               lineNumbers: true,
-              foldGutter: isJson,
+              foldGutter: isJson || Boolean(extraExtensions?.length),
               highlightActiveLine: !readOnly,
               highlightActiveLineGutter: !readOnly,
               indentOnInput: !readOnly,
               bracketMatching: true,
               closeBrackets: !readOnly,
-              autocompletion: false,
+              autocompletion: autocomplete,
               searchKeymap: false
             }}
             style={{

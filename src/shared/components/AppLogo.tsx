@@ -1,7 +1,7 @@
 import { cn } from '@/shared/lib/utils'
-import { PRODUCT_NAME } from '@shared/constants/product'
+import { PRODUCT_LOGO_FILE, PRODUCT_NAME } from '@shared/constants/product'
 
-const APP_LOGO_SRC = `${import.meta.env.BASE_URL}tess.png`
+const APP_LOGO_SRC = `${import.meta.env.BASE_URL}${PRODUCT_LOGO_FILE}`
 
 interface AppLogoProps {
   className?: string

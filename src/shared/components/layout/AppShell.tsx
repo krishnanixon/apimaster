@@ -1,36 +1,64 @@
-import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { Toaster } from 'sonner'
-import { AppSidebar } from './AppSidebar'
-import { WorkbenchTitleBar } from './WorkbenchTitleBar'
-import { CommandPalette } from './CommandPalette'
-import { ModuleWindowBar } from './ModuleWindowBar'
-import { useImmersiveLayoutEffect } from '@/shared/hooks/useImmersiveLayout'
-import { isModuleWindowView, isProjectWindowView, windowHref } from '@/shared/lib/windows'
-import { parseProjectIdFromPath, withProjectWindowQuery } from '@shared/lib/module-windows'
-import { useUIStore } from '@/shared/stores/ui.store'
-import { useNotepadStore } from '@/modules/notepad/stores/notepad.store'
-import { NotepadVoiceBridge } from '@/modules/notepad/components/NotepadVoiceBridge'
-import { TessBot } from '@/modules/voice-assistant/components/TessBot'
+import { Bot, Bug, Send, Server, Settings } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import { AppLogo } from '@/shared/components/AppLogo'
 import { ErrorBoundary } from '@/shared/components/ui/error-boundary'
-import { GenerationBlockingOverlay } from '@/features/documents/components/GenerationBlockingOverlay'
+import { isMacClient } from '@/shared/hooks/useMacWindowChrome'
 import { cn } from '@/shared/lib/utils'
-import { useTrackNavigation } from '@/shared/hooks/useTrackNavigation'
+import { PRODUCT_NAME } from '@shared/constants/product'
+
+const NAV_ITEMS: Array<{ to: string; label: string; icon: LucideIcon; end?: boolean }> = [
+  { to: '/', label: 'Requests', icon: Send, end: true },
+  { to: '/mock-servers', label: 'Mock Servers', icon: Server },
+  { to: '/ai-engineer', label: 'AI Engineer', icon: Bot },
+  { to: '/diagnostics', label: 'Bug Reports', icon: Bug },
+  { to: '/settings', label: 'Settings', icon: Settings }
+]
+
+function TitleBar() {
+  const mac = isMacClient()
+
+  return (
+    <header
+      className={cn(
+        'workbench-titlebar drag-region flex shrink-0 items-center gap-3 border-b border-border bg-sidebar px-3 text-sidebar-foreground',
+        mac ? 'h-[38px] pl-[84px]' : 'h-11'
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <AppLogo className="h-5 w-5 rounded-[5px]" />
+        <span className="truncate text-[13px] font-semibold">{PRODUCT_NAME}</span>
+      </div>
+      <nav className="ml-auto flex items-center gap-0.5">
+        {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={end}
+            title={label}
+            className={({ isActive }) =>
+              cn(
+                'flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors',
+                isActive
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground'
+              )
+            }
+          >
+            <Icon className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{label}</span>
+          </NavLink>
+        ))}
+      </nav>
+    </header>
+  )
+}
 
 export function AppShell() {
-  const { pathname, search } = useLocation()
-  useTrackNavigation()
+  const { pathname } = useLocation()
   const navigate = useNavigate()
-  const immersive = useImmersiveLayoutEffect()
-  const moduleWindow = isModuleWindowView(search)
-  const projectWindow = isProjectWindowView(search)
-  const navChromeStyle = useUIStore((s) => s.navChromeStyle)
-  const useHeaderNav = navChromeStyle === 'header' && !projectWindow
-  const showSidebar = !immersive && !useHeaderNav && !moduleWindow
-  const showTitleBar = !immersive && !moduleWindow
-  const showModuleWindowBar = moduleWindow && !immersive
-  // Claude-style frame: content floats as an inset pane over the sidebar surface
-  const framed = showSidebar ? 'true' : showTitleBar ? 'top' : undefined
 
   useEffect(() => {
     const reportError = (event: ErrorEvent) => {
@@ -53,92 +81,23 @@ export function AppShell() {
   }, [])
 
   useEffect(() => {
-    const routeId = parseProjectIdFromPath(pathname)
-    const locked = sessionStorage.getItem('project-window-id')
-
-    if (projectWindow && routeId) {
-      if (locked && routeId !== locked) {
-        navigate(withProjectWindowQuery(`/project/${locked}/overview`), { replace: true })
-        return
-      }
-      sessionStorage.setItem('project-window-id', routeId)
-      return
-    }
-
-    if (!locked) return
-
-    if (routeId === locked) {
-      if (!projectWindow) {
-        navigate(withProjectWindowQuery(`${pathname}${search}`), { replace: true })
-      }
-      return
-    }
-
-    navigate(withProjectWindowQuery(`/project/${locked}/overview`), { replace: true })
-  }, [pathname, search, projectWindow, navigate])
-
-  useEffect(() => {
-    if (!window.electronAPI?.clipboard) return
-    return window.electronAPI.clipboard.onOpenPanel(() => {
-      if (moduleWindow || projectWindow) return
-      navigate('/clipboard')
-    })
-  }, [navigate, moduleWindow, projectWindow])
-
-  useEffect(() => {
     if (!window.electronAPI?.app?.onNavigate) return
-    return window.electronAPI.app.onNavigate((path) => {
-      navigate(windowHref(path, search))
-    })
-  }, [navigate, search])
-
-  useEffect(() => {
-    const quickNoteApi = window.electronAPI?.quickNote
-    if (!quickNoteApi) return
-    return quickNoteApi.onSaved(() => {
-      void useNotepadStore.getState().refreshFromStorage()
-    })
-  }, [])
+    return window.electronAPI.app.onNavigate((path) => navigate(path))
+  }, [navigate])
 
   return (
-    <div
-      className={cn(
-        'flex h-full min-h-0 flex-1 flex-col overflow-hidden',
-        framed ? 'app-frame' : 'bg-background'
-      )}
-    >
-      <NotepadVoiceBridge />
-      {showTitleBar && <WorkbenchTitleBar />}
-
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        {showSidebar && <AppSidebar />}
-
-        <main
-          data-framed={framed}
-          className={cn(
-            'app-main-pane flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
-            immersive && 'immersive-main'
-          )}
-        >
-          {showModuleWindowBar && <ModuleWindowBar />}
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {/* Keyed by route so navigating away clears a previous failure. */}
-            <ErrorBoundary key={pathname}>
-              <Outlet />
-            </ErrorBoundary>
-          </div>
-        </main>
-      </div>
-
-      <CommandPalette />
-      {/* Tess owns the mic app-wide; pop-out windows stay silent to avoid two listeners. */}
-      {!moduleWindow && !projectWindow && <TessBot primary />}
-      <GenerationBlockingOverlay />
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      <TitleBar />
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        {/* Keyed by route so navigating away clears a previous failure. */}
+        <ErrorBoundary key={pathname}>
+          <Outlet />
+        </ErrorBoundary>
+      </main>
       <Toaster
         position="bottom-right"
         toastOptions={{
-          className:
-            'rounded-xl border border-border bg-card text-foreground shadow-float',
+          className: 'rounded-xl border border-border bg-card text-foreground shadow-float',
           duration: 3500
         }}
       />

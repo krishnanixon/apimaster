@@ -160,10 +160,6 @@ class AIManager {
   getMetrics() {
     return metricsService.getAll()
   }
-
-  get router() {
-    return aiRouter
-  }
 }
 
 export const aiManager = new AIManager()

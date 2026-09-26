@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@shared/constants/product'
 import { downloadBlob } from './download'
 
 export type CollectionExportFormat =
@@ -25,10 +26,10 @@ const FORMAT_META: Record<
     dialogTitle: 'Export OpenAPI Spec'
   },
   native: {
-    extension: 'api-studio.json',
+    extension: 'apimaster.json',
     mime: 'application/json',
-    filterName: 'API Studio Collection',
-    dialogTitle: 'Export API Studio Collection'
+    filterName: `${PRODUCT_NAME} Collection`,
+    dialogTitle: `Export ${PRODUCT_NAME} Collection`
   },
   markdown: {
     extension: 'md',

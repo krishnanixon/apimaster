@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
 import { toast } from 'sonner'
 import type {
@@ -20,15 +20,22 @@ import type {
   WorkspaceSplit
 } from '../types/api.types'
 import { createEmptyKeyValue, createEmptyRequest, syncPathParams } from '../services/requestBuilder'
-import { cancelRequest as cancelHttpRequest, executeResolved, prepareRequest } from '../services/apiClient'
+import { cancelRequest as cancelHttpRequest, executeResolved, finishExecution, prepareRequest } from '../services/apiClient'
 import { createEmptyEnvironment, enabledVariableMap } from '../services/environment'
 import { parseCurl } from '../services/curlParser'
-import { exportToPostmanCollection, importPostmanCollection } from '../services/postman'
-import { apiEndpointsToCollection } from '../services/knowledgeImport'
+import { exportToPostmanCollection } from '../services/postman'
 import { collectCollectionRequests, collectFolderRequests, runRequestList } from '../services/collectionRunner'
 import { getDescendantFolderIds, isFolderDescendant } from '../services/folderTree'
 import { generateSnippet } from '../services/codeGenerator'
 import { applyParentInheritance, createInheritAuth } from '../services/inheritance'
+import { workspaceStateStorage } from '../services/workspaceStorage'
+import { prepareWorkspacePersistState } from '@shared/lib/workspace-document'
+import { redactRequest } from '@shared/lib/redact-secrets'
+import { formatGraphQL } from '../services/graphql/document'
+import { migrateWorkspaceState, WORKSPACE_SCHEMA_VERSION } from '../services/graphql/migrate'
+import { applyRequestType, createDefaultGraphQLConfig } from '../services/graphql/model'
+import { buildIntrospectionRequest, readIntrospectionResult } from '../services/graphql/schema'
+import { importCollectionJson } from '../services/collectionImport'
 
 const MAX_HISTORY = 200
 
@@ -38,7 +45,7 @@ export interface WebSocketMessage {
   timestamp: string
 }
 
-interface TabState {
+export interface TabState {
   id: string
   request: ApiRequest
   /** Origin, when this tab mirrors a saved request. Undefined for scratch/unsaved tabs. */
@@ -53,6 +60,7 @@ interface TabState {
   wsConnected: boolean
   wsConnecting: boolean
   wsMessages: WebSocketMessage[]
+  graphqlSchemaLoading: boolean
 }
 
 interface RunnerState {
@@ -116,7 +124,7 @@ interface ApiStudioState {
   }) => void
 
   // Requests (persisted)
-  createRequest: (collectionId: string, folderId?: string | null) => void
+  createRequest: (collectionId: string, folderId?: string | null, requestType?: ApiRequest['requestType']) => void
   deleteRequest: (collectionId: string, requestId: string) => void
   duplicateRequest: (collectionId: string, requestId: string) => void
   renameRequest: (collectionId: string, requestId: string, name: string) => void
@@ -156,7 +164,6 @@ interface ApiStudioState {
 
   // Response actions
   saveResponseToFile: (tabId: string) => Promise<void>
-  createDocumentFromResponse: (tabId: string, projectId: string) => Promise<void>
 
   // Collection runner
   runCollection: (collectionId: string, options: CollectionRunnerOptions) => Promise<void>
@@ -164,15 +171,14 @@ interface ApiStudioState {
   cancelRunner: () => void
   clearRunnerReport: () => void
 
-  // Knowledge import
-  importFromKnowledge: (projectId: string, baseUrl?: string) => Promise<void>
-
   // Save
   saveTab: (tabId: string) => void
   saveTabAs: (tabId: string, collectionId: string, folderId?: string | null, name?: string) => void
 
   // Execution
   sendTabRequest: (tabId: string) => Promise<void>
+  fetchGraphQLSchema: (tabId: string) => Promise<void>
+  formatGraphQLQuery: (tabId: string) => void
   cancelTabRequest: (tabId: string) => Promise<void>
   runTabTests: (tabId: string) => Promise<void>
 
@@ -196,7 +202,6 @@ function createTabState(request: ApiRequest, collectionId?: string): TabState {
     request: { requestType: 'http', preRequestScript: '', ...request },
     collectionId,
     dirty: false,
-    requestView: 'params',
     responseView: 'body',
     loading: false,
     clientRequestId: null,
@@ -204,7 +209,9 @@ function createTabState(request: ApiRequest, collectionId?: string): TabState {
     testResults: [],
     wsConnected: false,
     wsConnecting: false,
-    wsMessages: []
+    wsMessages: [],
+    graphqlSchemaLoading: false,
+    requestView: request.requestType === 'graphql' ? 'query' : 'params'
   }
 }
 
@@ -491,9 +498,16 @@ export const useApiStudioStore = create<ApiStudioState>()(
         }))
       },
 
-      createRequest: (collectionId, folderId = null) => {
-        const request = createEmptyRequest('New Request', { inheritAuth: true })
-        request.folderId = folderId
+      createRequest: (collectionId, folderId = null, requestType = 'http') => {
+        const blank = createEmptyRequest(requestType === 'graphql' ? 'New GraphQL request' : 'New Request', {
+          inheritAuth: true
+        })
+        const request = {
+          ...blank,
+          ...applyRequestType(blank, requestType),
+          folderId,
+          ...(requestType === 'graphql' ? { method: 'POST' as const } : {})
+        }
         set((state) => ({
           collections: state.collections.map((c) =>
             c.id === collectionId
@@ -665,9 +679,13 @@ export const useApiStudioStore = create<ApiStudioState>()(
         const tab = get().tabs.find((t) => t.id === tabId)
         if (!tab) return
         const collection = findCollection(get().collections, tab.collectionId)
-        const curl = generateSnippet(tab.request, 'curl', collection)
-        await navigator.clipboard.writeText(curl)
-        toast.success('cURL copied to clipboard')
+        try {
+          const curl = generateSnippet(tab.request, 'curl', collection)
+          await navigator.clipboard.writeText(curl)
+          toast.success('cURL copied to clipboard')
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : 'Could not copy cURL')
+        }
       },
 
       setActiveTab: (tabId) => set({ activeTabId: tabId }),
@@ -744,7 +762,7 @@ export const useApiStudioStore = create<ApiStudioState>()(
           return
         }
         if (!tab.request.url.trim()) {
-          toast.error('Enter a URL first')
+          toast.error(tab.request.requestType === 'graphql' ? 'Enter a GraphQL endpoint first' : 'Enter a URL first')
           return
         }
 
@@ -761,11 +779,17 @@ export const useApiStudioStore = create<ApiStudioState>()(
           return
         }
 
-        const resolved = prepareRequest(tab.request, {
-          variables,
-          timeoutMs: tab.request.timeoutMs,
-          collection
-        })
+        let resolved
+        try {
+          resolved = prepareRequest(tab.request, {
+            variables,
+            timeoutMs: tab.request.timeoutMs,
+            collection
+          })
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : 'Could not prepare the request')
+          return
+        }
 
         set((state) => ({
           tabs: state.tabs.map((t) =>
@@ -774,7 +798,7 @@ export const useApiStudioStore = create<ApiStudioState>()(
         }))
 
         const started = performance.now()
-        const result = await executeResolved(resolved)
+        const result = finishExecution(tab.request, await executeResolved(resolved))
         const durationMs = Math.round(performance.now() - started)
 
         // If another send has started for this tab since we began, this
@@ -789,7 +813,7 @@ export const useApiStudioStore = create<ApiStudioState>()(
         const historyEntry: ApiHistoryEntry = {
           id: uuidv4(),
           timestamp: new Date().toISOString(),
-          request: tab.request,
+          request: redactRequest(tab.request),
           response: {
             ok: result.ok,
             status: result.status,
@@ -808,6 +832,110 @@ export const useApiStudioStore = create<ApiStudioState>()(
 
         if (tab.request.tests?.trim()) {
           await get().runTabTests(tabId)
+        }
+      },
+
+      fetchGraphQLSchema: async (tabId) => {
+        const tab = get().tabs.find((t) => t.id === tabId)
+        if (!tab || tab.request.requestType !== 'graphql') {
+          toast.error('Open a GraphQL request to fetch a schema')
+          return
+        }
+        if (!tab.request.url.trim()) {
+          toast.error('Enter a GraphQL endpoint first')
+          return
+        }
+
+        set((state) => ({
+          tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, graphqlSchemaLoading: true } : t))
+        }))
+
+        const fail = (message: string) => {
+          toast.error(message)
+          set((state) => ({
+            tabs: state.tabs.map((t) => {
+              if (t.id !== tabId) return t
+              const graphql = t.request.graphql ?? createDefaultGraphQLConfig()
+              if (graphql.schema?.introspection) return { ...t, graphqlSchemaLoading: false }
+              return {
+                ...t,
+                graphqlSchemaLoading: false,
+                request: {
+                  ...t.request,
+                  graphql: { ...graphql, schema: { ...graphql.schema, error: message } }
+                }
+              }
+            })
+          }))
+        }
+
+        try {
+          const collection = findCollection(get().collections, tab.collectionId)
+          const variables = await resolveVariables(get, applyParentInheritance(tab.request, collection))
+          const resolved = prepareRequest(buildIntrospectionRequest(tab.request), {
+            variables,
+            timeoutMs: tab.request.timeoutMs,
+            collection
+          })
+          const result = await executeResolved(resolved)
+          const current = get().tabs.find((t) => t.id === tabId)
+          if (!current) {
+            set((state) => ({
+              tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, graphqlSchemaLoading: false } : t))
+            }))
+            return
+          }
+          const read = readIntrospectionResult(result)
+          if (!read.introspection) {
+            fail(read.error ?? 'Schema introspection failed')
+            return
+          }
+          const graphql = current.request.graphql ?? createDefaultGraphQLConfig()
+          set((state) => ({
+            tabs: state.tabs.map((t) =>
+              t.id === tabId
+                ? {
+                    ...t,
+                    dirty: true,
+                    graphqlSchemaLoading: false,
+                    request: {
+                      ...t.request,
+                      updatedAt: new Date().toISOString(),
+                      graphql: {
+                        ...graphql,
+                        schema: {
+                          introspection: read.introspection,
+                          fetchedAt: new Date().toISOString(),
+                          endpoint: current.request.url.trim()
+                        }
+                      }
+                    }
+                  }
+                : t
+            )
+          }))
+          toast.success('Schema fetched')
+        } catch (error) {
+          fail(error instanceof Error ? error.message : 'Schema introspection failed')
+        }
+      },
+
+      formatGraphQLQuery: (tabId) => {
+        const tab = get().tabs.find((t) => t.id === tabId)
+        if (!tab || tab.request.requestType !== 'graphql') return
+        const graphql = tab.request.graphql ?? createDefaultGraphQLConfig()
+        if (!graphql.query.trim()) {
+          toast.error('Nothing to format')
+          return
+        }
+        try {
+          const query = formatGraphQL(graphql.query)
+          if (query !== graphql.query) {
+            get().updateDraft(tabId, { graphql: { ...graphql, query } })
+          }
+          toast.success('Query formatted')
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : 'Could not format the query')
         }
       },
 
@@ -837,7 +965,7 @@ export const useApiStudioStore = create<ApiStudioState>()(
 
       importCollection: (json) => {
         try {
-          const { collection, warnings } = importPostmanCollection(json)
+          const { collection, warnings } = importCollectionJson(json)
           set((state) => ({ collections: [...state.collections, collection] }))
           toast.success(`Imported "${collection.name}" (${collection.requests.length} requests)`)
           warnings.forEach((w) => toast.warning(w))
@@ -1027,27 +1155,6 @@ export const useApiStudioStore = create<ApiStudioState>()(
         else if (res.error && res.error !== 'Save cancelled') toast.error(res.error)
       },
 
-      createDocumentFromResponse: async (tabId, projectId) => {
-        const tab = get().tabs.find((t) => t.id === tabId)
-        if (!tab?.response) return
-        const title = `API Response — ${tab.request.name}`
-        const bodyPreview = tab.response.isBinary
-          ? `<p><em>Binary response (${tab.response.sizeBytes} bytes)</em></p>`
-          : `<pre><code>${tab.response.data.replace(/</g, '&lt;')}</code></pre>`
-        const html = `<h1>${title}</h1>
-<p><strong>${tab.request.method}</strong> ${tab.request.url}</p>
-<p>Status: ${tab.response.status} ${tab.response.statusText} · ${tab.response.timeMs}ms</p>
-${bodyPreview}`
-        const res = await window.electronAPI.documents.create({
-          projectId,
-          title,
-          type: 'api_spec',
-          htmlContent: html
-        })
-        if (res.success && res.data) toast.success('Document created from response')
-        else toast.error(res.error ?? 'Failed to create document')
-      },
-
       runCollection: async (collectionId, options) => {
         const collection = get().collections.find((c) => c.id === collectionId)
         if (!collection) return
@@ -1108,47 +1215,38 @@ ${bodyPreview}`
       },
 
       cancelRunner: () => set({ runnerAbort: true }),
-      clearRunnerReport: () => set({ runner: { isRunning: false, progress: null, report: null } }),
-
-      importFromKnowledge: async (projectId, baseUrl) => {
-        const res = await window.electronAPI.knowledge.load(projectId)
-        if (!res.success || !res.data) {
-          toast.error(res.error ?? 'Failed to load project knowledge')
-          return
-        }
-        const endpoints = res.data.apiEndpoints.filter((e) => !e.deletedAt)
-        if (endpoints.length === 0) {
-          toast.error('No API endpoints in project knowledge')
-          return
-        }
-        const projectRes = await window.electronAPI.projects.open(projectId)
-        const projectName = projectRes.success && projectRes.data ? projectRes.data.name : 'Project'
-        const collection = apiEndpointsToCollection(endpoints, `${projectName} APIs`, baseUrl)
-        set((state) => ({ collections: [...state.collections, collection] }))
-        toast.success(`Imported ${collection.requests.length} endpoints from knowledge`)
-      }
+      clearRunnerReport: () => set({ runner: { isRunning: false, progress: null, report: null } })
     }),
     {
       name: 'api-studio',
-      partialize: (state) => ({
-        collections: state.collections,
-        history: state.history,
-        environments: state.environments,
-        activeEnvironmentId: state.activeEnvironmentId,
-        activeTabId: state.activeTabId,
-        workspaceSplit: state.workspaceSplit,
-        // Persist drafts across restarts, but never transient in-flight state.
-        tabs: state.tabs.map((t) => ({
-          ...t,
-          loading: false,
-          clientRequestId: null,
-          response: null,
-          testResults: [],
-          wsConnected: false,
-          wsConnecting: false,
-          wsMessages: []
-        }))
-      })
+      version: WORKSPACE_SCHEMA_VERSION,
+      storage: createJSONStorage(() => workspaceStateStorage),
+      migrate: (persisted, version) =>
+        prepareWorkspacePersistState(migrateWorkspaceState(persisted, version) as { history?: ApiHistoryEntry[] }),
+      onRehydrateStorage: () => (_state, error) => {
+        if (error) toast.error(error instanceof Error ? error.message : 'Could not load the workspace')
+      },
+      partialize: (state) =>
+        prepareWorkspacePersistState({
+          collections: state.collections,
+          history: state.history,
+          environments: state.environments,
+          activeEnvironmentId: state.activeEnvironmentId,
+          activeTabId: state.activeTabId,
+          workspaceSplit: state.workspaceSplit,
+          // Persist drafts across restarts, but never transient in-flight state.
+          tabs: state.tabs.map((t) => ({
+            ...t,
+            loading: false,
+            clientRequestId: null,
+            response: null,
+            testResults: [],
+            wsConnected: false,
+            wsConnecting: false,
+            wsMessages: [],
+            graphqlSchemaLoading: false
+          }))
+        })
     }
   )
 )

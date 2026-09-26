@@ -7,6 +7,7 @@ import type { ApiCollection, ApiExecutionResult, ApiRequest, ResolvedHttpRequest
 import { resolveRequest } from './requestBuilder'
 import { applyEnvironmentVariables } from './environment'
 import { applyParentInheritance } from './inheritance'
+import { interpretGraphQLResult } from './graphql/prepare'
 
 const DEFAULT_TIMEOUT_MS = 30_000
 
@@ -32,6 +33,10 @@ export function prepareRequest(
 /** Executes an already-resolved request. Split out from `sendRequest` so callers can
  * know the `clientRequestId` synchronously (e.g. to store it for cancellation/staleness
  * checks) before awaiting the network round-trip. */
+export function finishExecution(request: ApiRequest, result: ApiExecutionResult): ApiExecutionResult {
+  return request.requestType === 'graphql' ? interpretGraphQLResult(result) : result
+}
+
 export async function executeResolved(resolved: ResolvedHttpRequest): Promise<ApiExecutionResult> {
   const response = await window.electronAPI.apiStudio.sendRequest(resolved)
   if (!response.success || !response.data) {

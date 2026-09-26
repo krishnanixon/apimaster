@@ -20,6 +20,7 @@ interface UrlBarProps {
   url: string
   loading: boolean
   isWebSocket?: boolean
+  isGraphQL?: boolean
   wsConnected?: boolean
   wsConnecting?: boolean
   onMethodChange: (method: HttpMethod) => void
@@ -35,6 +36,7 @@ export function UrlBar({
   url,
   loading,
   isWebSocket,
+  isGraphQL,
   wsConnected,
   wsConnecting,
   onMethodChange,
@@ -75,7 +77,7 @@ export function UrlBar({
           urlFocused && 'border-foreground/25 ring-2 ring-ring/15'
         )}
       >
-        {!isWebSocket && (
+        {!isWebSocket && !isGraphQL && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -117,13 +119,17 @@ export function UrlBar({
             }
           }}
           placeholder={
-            isWebSocket ? 'wss://api.example.com/socket' : 'https://api.example.com/users/:id  or paste cURL'
+            isGraphQL
+              ? 'https://api.example.com/graphql'
+              : isWebSocket
+                ? 'wss://api.example.com/socket'
+                : 'https://api.example.com/users/:id  or paste cURL'
           }
           compact
           mono
           bare
           className="min-w-0 flex-1"
-          aria-label="Request URL"
+          aria-label={isGraphQL ? 'GraphQL endpoint' : 'Request URL'}
         />
 
         {missingVars.length > 0 && (

@@ -16,11 +16,12 @@ interface PostmanUrl {
 }
 
 interface PostmanBody {
-  mode?: 'raw' | 'formdata' | 'urlencoded'
+  mode?: 'raw' | 'formdata' | 'urlencoded' | 'graphql'
   raw?: string
   formdata?: { key: string; value: string; type?: string; disabled?: boolean }[]
   urlencoded?: { key: string; value: string; disabled?: boolean }[]
   options?: { raw?: { language?: string } }
+  graphql?: { query?: string; variables?: string | Record<string, unknown>; operationName?: string }
 }
 
 interface PostmanAuth {
@@ -241,20 +242,32 @@ function flattenItems(
     const queryFromPostman = item.request.url && typeof item.request.url !== 'string' ? item.request.url.query : undefined
     const pathFromPostman = item.request.url && typeof item.request.url !== 'string' ? item.request.url.variable : undefined
     const pathParams = syncPathParams(base, pathFromPostman?.length ? toKeyValues(pathFromPostman) : [])
+    const graphqlBody = item.request.body?.mode === 'graphql' ? item.request.body.graphql : undefined
+    const variables = graphqlBody?.variables
+    const variablesText =
+      typeof variables === 'string' ? variables : variables ? JSON.stringify(variables, null, 2) : '{\n}'
 
     requests.push({
       id: uuidv4(),
       name: item.name || 'Imported Request',
-      method: (item.request.method?.toUpperCase() as HttpMethod) || 'GET',
+      method: graphqlBody ? 'POST' : ((item.request.method?.toUpperCase() as HttpMethod) || 'GET'),
       url: base,
       headers: toKeyValues(item.request.header),
       queryParams: queryFromPostman?.length ? toKeyValues(queryFromPostman) : params.length ? params : [createEmptyKeyValue()],
       pathParams,
-      body: parsePostmanBody(item.request.body),
+      body: graphqlBody ? createDefaultBody() : parsePostmanBody(item.request.body),
       auth: parsePostmanAuth(item.request.auth, createInheritAuth()),
       tests: scriptFromEvents(item.event, 'test'),
       preRequestScript: scriptFromEvents(item.event, 'prerequest'),
       description: typeof item.description === 'string' ? item.description : '',
+      requestType: graphqlBody ? 'graphql' : 'http',
+      graphql: graphqlBody
+        ? {
+            query: graphqlBody.query ?? '',
+            variables: variablesText,
+            ...(graphqlBody.operationName ? { operationName: graphqlBody.operationName } : {})
+          }
+        : undefined,
       folderId,
       updatedAt: new Date().toISOString()
     })
@@ -422,7 +435,16 @@ export function exportToPostmanCollection(collection: ApiCollection): string {
       .map((p) => ({ key: p.key, value: p.value, disabled: !p.enabled }))
 
     let body: PostmanBody | undefined
-    if (request.body.type === 'json' || request.body.type === 'text') {
+    if (request.requestType === 'graphql') {
+      body = {
+        mode: 'graphql',
+        graphql: {
+          query: request.graphql?.query ?? '',
+          variables: request.graphql?.variables ?? '',
+          ...(request.graphql?.operationName ? { operationName: request.graphql.operationName } : {})
+        }
+      }
+    } else if (request.body.type === 'json' || request.body.type === 'text') {
       body = {
         mode: 'raw',
         raw: request.body.content,
@@ -458,7 +480,7 @@ export function exportToPostmanCollection(collection: ApiCollection): string {
       ...(description ? { description } : {}),
       ...(events.length ? { event: events } : {}),
       request: {
-        method: request.method,
+        method: request.requestType === 'graphql' ? 'POST' : request.method,
         header,
         url: {
           raw: request.url,

@@ -6,7 +6,7 @@ import type {
   CollectionRunnerOptions,
   CollectionRunnerReport
 } from '../types/api.types'
-import { prepareRequest, executeResolved } from './apiClient'
+import { prepareRequest, executeResolved, finishExecution } from './apiClient'
 import { collectFolderTreeRequests } from './folderTree'
 import { applyParentInheritance } from './inheritance'
 
@@ -128,12 +128,34 @@ export async function runRequestList(
       continue
     }
 
-    const resolved = prepareRequest(request, {
-      variables: runtimeVariables,
-      timeoutMs: request.timeoutMs
-    })
+    let resolved
+    try {
+      resolved = prepareRequest(request, {
+        variables: runtimeVariables,
+        timeoutMs: request.timeoutMs
+      })
+    } catch (error) {
+      failed++
+      results.push({
+        requestId: request.id,
+        requestName: request.name,
+        method: request.method,
+        url: request.url,
+        ok: false,
+        status: 0,
+        timeMs: 0,
+        error: error instanceof Error ? error.message : 'Could not prepare the request',
+        testResults: []
+      })
+      if (options.stopOnFail) {
+        stoppedEarly = true
+        break
+      }
+      if (options.delayMs > 0 && i < requests.length - 1) await sleep(options.delayMs)
+      continue
+    }
     const reqStarted = performance.now()
-    const response = await executeResolved(resolved)
+    const response = finishExecution(request, await executeResolved(resolved))
     const timeMs = Math.round(performance.now() - reqStarted)
     const testResults = await runTests(request, response)
     const requestFailed = isRequestFailed(response, testResults)

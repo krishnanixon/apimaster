@@ -1,633 +1,404 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  BookOpen,
+  ArrowRight,
   Check,
+  Download,
+  FolderTree,
   HardDrive,
   KeyRound,
-  Layers,
   Loader2,
-  MessageSquare,
+  Send,
   ShieldCheck,
   Sparkles,
-  Workflow
+  TestTube2,
+  UserX,
+  Variable,
+  type LucideIcon
 } from 'lucide-react'
 import { AppLogo } from '@/shared/components/AppLogo'
 import { Button } from '@/shared/components/ui/button'
-import { ScrollArea } from '@/shared/components/ui/scroll-area'
 import { cn } from '@/shared/lib/utils'
-import { waitForDesktopApi } from '@/shared/lib/desktop-api'
-import {
-  PRODUCT_DESCRIPTION,
-  PRODUCT_NAME,
-  PRODUCT_TAGLINE
-} from '@shared/constants/product'
-import {
-  TERMS_LAST_UPDATED,
-  TERMS_SECTIONS,
-  TERMS_TITLE,
-  TERMS_VERSION
-} from '@shared/constants/terms'
+import { PRODUCT_DESCRIPTION, PRODUCT_NAME, PRODUCT_TAGLINE } from '@shared/constants/product'
+import { TERMS_LAST_UPDATED, TERMS_TITLE, TERMS_VERSION } from '@shared/constants/terms'
+import { OnboardingFrame } from './components/OnboardingFrame'
+import { StepHeading } from './components/StepHeading'
+import { TermsAcceptance } from './components/TermsAcceptance'
+import { acceptCurrentTerms } from './onboarding-state'
 
-type SetupStep = 'welcome' | 'product' | 'local' | 'terms' | 'prepare' | 'ready'
+/** Where to land once setup finishes. */
+export type SetupDestination = 'workspace' | 'new-request' | 'import' | 'ai-settings'
 
-const STEP_ORDER: SetupStep[] = ['welcome', 'product', 'local', 'terms', 'prepare', 'ready']
+type SetupStep = 'welcome' | 'features' | 'privacy' | 'terms' | 'ready'
 
-const PRODUCT_HIGHLIGHTS = [
+const STEP_ORDER: SetupStep[] = ['welcome', 'features', 'privacy', 'terms', 'ready']
+
+/** Steps with the Back / dots / Continue footer (welcome and ready have their own buttons). */
+const FOOTER_STEPS: SetupStep[] = ['features', 'privacy', 'terms']
+
+const EASE = [0.22, 1, 0.36, 1] as const
+
+const FEATURES: Array<{ icon: LucideIcon; title: string; detail: string }> = [
   {
-    icon: MessageSquare,
-    title: 'AI chat & generation',
-    detail: 'Stream responses, generate requirement docs, and edit with AI assistance.'
+    icon: Send,
+    title: 'HTTP & WebSocket',
+    detail: 'JSON, form-data, and URL-encoded bodies, plus live WebSocket sessions.'
   },
   {
-    icon: BookOpen,
-    title: 'Knowledge-driven projects',
-    detail: 'Keep context in a local knowledge base that powers chat, docs, and diagrams.'
+    icon: FolderTree,
+    title: 'Collections & folders',
+    detail: 'Organize requests and let folders share auth, headers, and settings.'
   },
   {
-    icon: Workflow,
-    title: 'Flows, architecture & decks',
-    detail: 'Design processes, system diagrams, and presentations in one workspace.'
+    icon: Variable,
+    title: 'Environments',
+    detail: 'Switch between local, staging, and production with {{variables}}.'
   },
   {
-    icon: Layers,
-    title: 'Developer tools built in',
-    detail: 'API Studio, Terminal, Code Editor, Vault, VPS, Voice, and more — all local.'
+    icon: KeyRound,
+    title: 'Every common auth',
+    detail: 'Bearer, Basic, API key, OAuth 1 & 2, JWT, Digest, AWS SigV4, and Hawk.'
+  },
+  {
+    icon: TestTube2,
+    title: 'Scripts, tests & runner',
+    detail: 'Pre-request and test scripts, then run a whole collection or folder.'
+  },
+  {
+    icon: Sparkles,
+    title: 'Built-in AI',
+    detail: 'Generate requests, explain responses, and write tests with your own key.'
   }
 ]
 
-const PREPARE_STAGES = [
-  { label: 'Preparing local workspace', detail: 'Creating your private app data folder' },
-  { label: 'Setting up local storage', detail: 'Projects and documents stay on this device' },
-  { label: 'Finishing installation', detail: 'Almost ready — no cloud account required' }
+const PRIVACY_POINTS: Array<{ icon: LucideIcon; title: string; detail: string }> = [
+  {
+    icon: UserX,
+    title: 'No account, no telemetry',
+    detail: 'Nothing to sign up for. The app does not collect analytics.'
+  },
+  {
+    icon: HardDrive,
+    title: 'Your data stays here',
+    detail: 'Collections, environments, and history are saved on this device and export as plain files.'
+  },
+  {
+    icon: Send,
+    title: 'Requests go direct',
+    detail: 'Calls travel straight from your machine to your API, with no proxy in between.'
+  },
+  {
+    icon: ShieldCheck,
+    title: 'AI only when you ask',
+    detail: 'Request details reach an AI provider only when you run an AI action with a key you added.'
+  }
 ]
 
-const FALLBACK_STORAGE_KEY = 'ai-workbench-onboarding'
-
-function stepIndex(step: SetupStep): number {
-  return STEP_ORDER.indexOf(step)
-}
+const READY_OPTIONS: Array<{
+  destination: SetupDestination
+  icon: LucideIcon
+  title: string
+  detail: string
+}> = [
+  {
+    destination: 'new-request',
+    icon: Send,
+    title: 'Send a first request',
+    detail: 'Opens a sample GET you can run right away.'
+  },
+  {
+    destination: 'import',
+    icon: Download,
+    title: 'Import a collection',
+    detail: 'Bring in Postman, OpenAPI, or cURL.'
+  },
+  {
+    destination: 'ai-settings',
+    icon: Sparkles,
+    title: 'Connect AI',
+    detail: 'Add a provider key or point to Ollama.'
+  }
+]
 
 interface SetupFlowProps {
-  onComplete: () => void
+  onComplete: (destination: SetupDestination) => void
 }
 
+/** First-launch welcome: product intro, privacy model, and required terms acceptance. */
 export function SetupFlow({ onComplete }: SetupFlowProps) {
   const [step, setStep] = useState<SetupStep>('welcome')
+  const [direction, setDirection] = useState<1 | -1>(1)
   const [accepted, setAccepted] = useState(false)
-  const [prepareIndex, setPrepareIndex] = useState(0)
-  const [prepareProgress, setPrepareProgress] = useState(0)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const finishingRef = useRef(false)
 
-  const goNext = useCallback(() => {
+  const index = STEP_ORDER.indexOf(step)
+  const hasFooter = FOOTER_STEPS.includes(step)
+
+  function go(next: SetupStep) {
     setError(null)
-    setStep((current) => {
-      const i = stepIndex(current)
-      return STEP_ORDER[Math.min(i + 1, STEP_ORDER.length - 1)]
-    })
-  }, [])
+    setDirection(STEP_ORDER.indexOf(next) >= index ? 1 : -1)
+    setStep(next)
+  }
 
-  const goBack = useCallback(() => {
-    setError(null)
-    setStep((current) => {
-      const i = stepIndex(current)
-      if (i <= 0) return current
-      if (current === 'ready') return 'terms'
-      return STEP_ORDER[i - 1]
-    })
-  }, [])
+  const goNext = () => go(STEP_ORDER[Math.min(index + 1, STEP_ORDER.length - 1)])
+  const goBack = () => go(STEP_ORDER[Math.max(index - 1, 0)])
 
-  const finishSetup = useCallback(async () => {
-    if (finishingRef.current) return
-    finishingRef.current = true
+  async function acceptTerms() {
+    if (!accepted || saving) return
     setSaving(true)
     setError(null)
     try {
-      const api = await waitForDesktopApi()
-      if (api?.onboarding) {
-        const result = await api.onboarding.complete(TERMS_VERSION)
-        if (!result.success) {
-          throw new Error(result.error || 'Could not save acceptance')
-        }
-      } else {
-        localStorage.setItem(
-          FALLBACK_STORAGE_KEY,
-          JSON.stringify({
-            termsVersion: TERMS_VERSION,
-            termsAcceptedAt: new Date().toISOString(),
-            setupCompletedAt: new Date().toISOString()
-          })
-        )
-      }
-      setStep('ready')
+      await acceptCurrentTerms()
+      go('ready')
     } catch (e) {
-      finishingRef.current = false
-      setError(e instanceof Error ? e.message : 'Setup failed')
-      setStep('terms')
+      setError(e instanceof Error ? e.message : 'Could not save your acceptance')
     } finally {
       setSaving(false)
     }
-  }, [])
-
-  useEffect(() => {
-    if (step !== 'prepare') return
-
-    finishingRef.current = false
-    setPrepareIndex(0)
-    setPrepareProgress(0)
-
-    const duration = 2800
-    const started = performance.now()
-    let frame = 0
-    let cancelled = false
-
-    const tick = (now: number) => {
-      if (cancelled) return
-      const t = Math.min(1, (now - started) / duration)
-      setPrepareProgress(t)
-      setPrepareIndex(Math.min(PREPARE_STAGES.length - 1, Math.floor(t * PREPARE_STAGES.length)))
-      if (t < 1) {
-        frame = requestAnimationFrame(tick)
-      } else {
-        void finishSetup()
-      }
-    }
-
-    frame = requestAnimationFrame(tick)
-    return () => {
-      cancelled = true
-      cancelAnimationFrame(frame)
-    }
-  }, [step, finishSetup])
-
-  const progressPct = ((stepIndex(step) + (step === 'prepare' ? prepareProgress : 1)) /
-    STEP_ORDER.length) *
-    100
+  }
 
   return (
-    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      {/* Apple-inspired soft atmosphere */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(0,122,255,0.08),_transparent_55%),linear-gradient(180deg,_#f5f5f7_0%,_#ffffff_42%,_#fbfbfd_100%)] dark:bg-[radial-gradient(ellipse_at_top,_rgba(10,132,255,0.16),_transparent_50%),linear-gradient(180deg,_#1c1c1e_0%,_#000000_55%,_#111113_100%)]"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -left-24 top-24 h-72 w-72 rounded-full bg-[#007AFF]/10 blur-3xl dark:bg-[#0A84FF]/20"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-16 bottom-10 h-80 w-80 rounded-full bg-[#5856D6]/8 blur-3xl dark:bg-[#5E5CE6]/15"
-      />
-
-      <div className="relative z-10 mx-auto flex h-full w-full max-w-3xl flex-col px-6 py-8 sm:px-10 sm:py-10">
-        <header className="mb-6 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <AppLogo className="h-9 w-9 rounded-[1.1rem] shadow-sm" />
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold tracking-tight text-[#1d1d1f] dark:text-white">
-                {PRODUCT_NAME}
-              </p>
-              <p className="text-[11px] text-[#86868b]">Setup</p>
-            </div>
-          </div>
-          <p className="text-[11px] tabular-nums text-[#86868b]">
-            {Math.min(stepIndex(step) + 1, STEP_ORDER.length)} / {STEP_ORDER.length}
-          </p>
-        </header>
-
-        <div className="mb-8 h-[3px] overflow-hidden rounded-full bg-black/5 dark:bg-white/10">
+    <OnboardingFrame
+      hideBrand={step === 'welcome'}
+      meta={
+        hasFooter ? `Step ${FOOTER_STEPS.indexOf(step) + 1} of ${FOOTER_STEPS.length}` : null
+      }
+    >
+      <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-6 pb-6 sm:px-10">
+        <AnimatePresence mode="wait" custom={direction} initial={false}>
           <motion.div
-            className="h-full rounded-full bg-[#007AFF]"
-            initial={false}
-            animate={{ width: `${Math.min(100, Math.max(8, progressPct))}%` }}
-            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-          />
-        </div>
+            key={step}
+            custom={direction}
+            initial={{ opacity: 0, x: 24 * direction }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -16 * direction }}
+            transition={{ duration: 0.28, ease: EASE }}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            {step === 'welcome' && <WelcomeStep onContinue={goNext} />}
+            {step === 'features' && <FeaturesStep />}
+            {step === 'privacy' && <PrivacyStep />}
+            {step === 'terms' && (
+              <div className="flex min-h-0 flex-1 flex-col">
+                <StepHeading eyebrow="Required" title={TERMS_TITLE}>
+                  Please read and accept to continue. Version {TERMS_VERSION} · Updated{' '}
+                  {TERMS_LAST_UPDATED}. You can read them again any time from Settings → About.
+                </StepHeading>
+                <TermsAcceptance accepted={accepted} onAcceptedChange={setAccepted} error={error} />
+              </div>
+            )}
+            {step === 'ready' && <ReadyStep onFinish={onComplete} />}
+          </motion.div>
+        </AnimatePresence>
 
-        <div className="relative min-h-0 flex-1">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={step}
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-              className="flex h-full min-h-0 flex-col"
-            >
-              {step === 'welcome' && <WelcomeStep onContinue={goNext} />}
-              {step === 'product' && <ProductStep onBack={goBack} onContinue={goNext} />}
-              {step === 'local' && <LocalStep onBack={goBack} onContinue={goNext} />}
-              {step === 'terms' && (
-                <TermsStep
-                  accepted={accepted}
-                  onAcceptedChange={setAccepted}
-                  onBack={goBack}
-                  onContinue={() => {
-                    if (!accepted) {
-                      setError('Please accept the Terms & Conditions to continue.')
-                      return
-                    }
-                    setStep('prepare')
-                  }}
-                  error={error}
-                />
-              )}
-              {step === 'prepare' && (
-                <PrepareStep
-                  stageIndex={prepareIndex}
-                  progress={prepareProgress}
-                  saving={saving}
-                />
-              )}
-              {step === 'ready' && <ReadyStep onFinish={onComplete} />}
-            </motion.div>
-          </AnimatePresence>
-        </div>
+        {hasFooter && (
+          <footer className="mt-5 flex shrink-0 items-center justify-between gap-3">
+            <Button variant="ghost" onClick={goBack} disabled={saving}>
+              Back
+            </Button>
+            <StepDots current={FOOTER_STEPS.indexOf(step)} count={FOOTER_STEPS.length} />
+            {step === 'terms' ? (
+              <Button onClick={() => void acceptTerms()} disabled={!accepted || saving}>
+                {saving ? <Loader2 className="animate-spin" /> : <Check />}
+                Accept & continue
+              </Button>
+            ) : (
+              <Button onClick={goNext}>
+                {step === 'privacy' ? 'Review terms' : 'Continue'}
+                <ArrowRight />
+              </Button>
+            )}
+          </footer>
+        )}
       </div>
+    </OnboardingFrame>
+  )
+}
+
+function StepDots({ current, count }: { current: number; count: number }) {
+  return (
+    <div className="flex items-center gap-1.5" aria-hidden>
+      {Array.from({ length: count }, (_, i) => (
+        <span
+          key={i}
+          className={cn(
+            'h-1.5 rounded-full transition-all duration-base',
+            i === current ? 'w-5 bg-primary' : i < current ? 'w-1.5 bg-primary/50' : 'w-1.5 bg-border'
+          )}
+        />
+      ))}
     </div>
   )
 }
 
 function WelcomeStep({ onContinue }: { onContinue: () => void }) {
   return (
-    <div className="flex h-full flex-col justify-between gap-10">
-      <div className="mx-auto max-w-xl space-y-6 pt-6 text-center sm:pt-12">
-        <motion.div
-          initial={{ scale: 0.92, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className="mx-auto flex h-20 w-20 items-center justify-center rounded-[1.75rem] bg-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.08)] ring-1 ring-black/5 backdrop-blur dark:bg-white/10 dark:ring-white/10"
-        >
-          <AppLogo className="h-12 w-12 rounded-2xl" />
-        </motion.div>
-        <div className="space-y-3">
-          <h1 className="text-[2rem] font-semibold leading-tight tracking-tight text-[#1d1d1f] sm:text-[2.5rem] dark:text-white">
-            {PRODUCT_NAME}
-          </h1>
-          <p className="text-base text-[#86868b] sm:text-lg">{PRODUCT_TAGLINE}</p>
-          <p className="mx-auto max-w-md text-sm leading-relaxed text-[#6e6e73] dark:text-[#a1a1a6]">
-            {PRODUCT_DESCRIPTION} Let’s finish setup — it only takes a minute.
-          </p>
+    <div className="flex flex-1 flex-col items-center justify-center pb-8 text-center">
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0, y: 8 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: EASE }}
+        className="relative mb-7"
+      >
+        <div
+          aria-hidden
+          className="absolute inset-0 -z-10 scale-150 rounded-full bg-primary/25 blur-2xl"
+        />
+        <div className="flex h-20 w-20 items-center justify-center rounded-[1.4rem] border border-border/70 bg-card shadow-float">
+          <AppLogo className="h-12 w-12 rounded-xl" />
         </div>
-      </div>
-      <div className="flex justify-center pb-2">
-        <Button
-          size="lg"
-          className="min-w-[200px] rounded-full bg-[#007AFF] px-8 text-white shadow-sm hover:bg-[#0071e3]"
-          onClick={onContinue}
-        >
-          Continue
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.12, ease: EASE }}
+        className="space-y-3"
+      >
+        <p className="text-sm font-medium text-muted-foreground">Welcome to</p>
+        <h1 className="text-[2.5rem] font-semibold leading-none tracking-tight">{PRODUCT_NAME}</h1>
+        <p className="text-base text-foreground/80">{PRODUCT_TAGLINE}</p>
+        <p className="mx-auto max-w-md text-sm leading-relaxed text-muted-foreground">
+          {PRODUCT_DESCRIPTION}
+        </p>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.24, ease: EASE }}
+        className="mt-9 flex flex-col items-center gap-3"
+      >
+        <Button size="lg" className="min-w-[200px] rounded-full" onClick={onContinue} autoFocus>
+          Get started <ArrowRight />
         </Button>
-      </div>
+        <p className="text-xs text-muted-foreground">Three quick screens, then you’re in.</p>
+      </motion.div>
     </div>
   )
 }
 
-function ProductStep({ onBack, onContinue }: { onBack: () => void; onContinue: () => void }) {
+function FeaturesStep() {
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-6 space-y-2">
-        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#86868b]">
-          What you get
-        </p>
-        <h2 className="text-2xl font-semibold tracking-tight text-[#1d1d1f] dark:text-white">
-          Your AI developer workbench
-        </h2>
-        <p className="max-w-2xl text-sm leading-relaxed text-[#6e6e73] dark:text-[#a1a1a6]">
-          From idea to delivery-ready specs: chat, knowledge, documents, diagrams, and tools —
-          organized in projects on your machine.
-        </p>
-      </div>
-      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto sm:grid-cols-2">
-        {PRODUCT_HIGHLIGHTS.map((item, i) => (
-          <motion.div
-            key={item.title}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 * i, duration: 0.35 }}
-            className="rounded-2xl border border-black/5 bg-white/70 p-4 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5"
-          >
-            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-[#007AFF]/10 text-[#007AFF]">
-              <item.icon className="h-4 w-4" />
-            </div>
-            <h3 className="text-sm font-semibold text-[#1d1d1f] dark:text-white">{item.title}</h3>
-            <p className="mt-1 text-[13px] leading-relaxed text-[#6e6e73] dark:text-[#a1a1a6]">
-              {item.detail}
-            </p>
-          </motion.div>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <StepHeading eyebrow="What’s inside" title="Everything you need to work with APIs">
+        Build, organize, and test requests on your desktop. Import from Postman, OpenAPI, or cURL,
+        and export back to Postman or OpenAPI whenever you like.
+      </StepHeading>
+      <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-1 gap-2.5 overflow-y-auto sm:grid-cols-2 md:grid-cols-3">
+        {FEATURES.map((item, i) => (
+          <FeatureCard key={item.title} {...item} delay={0.04 * i} />
         ))}
       </div>
-      <StepFooter onBack={onBack} onContinue={onContinue} />
     </div>
   )
 }
 
-function LocalStep({ onBack, onContinue }: { onBack: () => void; onContinue: () => void }) {
+function PrivacyStep() {
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-6 space-y-2">
-        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#86868b]">
-          Privacy first
-        </p>
-        <h2 className="text-2xl font-semibold tracking-tight text-[#1d1d1f] dark:text-white">
-          Everything stays on your device
-        </h2>
-        <p className="max-w-2xl text-sm leading-relaxed text-[#6e6e73] dark:text-[#a1a1a6]">
-          No cloud workspace account. Add an API key when you want AI — then start working.
-        </p>
-      </div>
-
-      <div className="space-y-3">
-        <InfoRow
-          icon={HardDrive}
-          title="Stored locally"
-          detail="Projects, documents, chat history, and settings live in a local database on this computer."
-        />
-        <InfoRow
-          icon={KeyRound}
-          title="Just add your API key"
-          detail="Open Settings → AI, paste your OpenAI key or connect Ollama. Keys use OS secure storage."
-        />
-        <InfoRow
-          icon={ShieldCheck}
-          title="You control when AI is used"
-          detail="Network calls happen only when you run an AI action with a provider you configured."
-        />
-        <InfoRow
-          icon={Sparkles}
-          title="Ready in minutes"
-          detail="After setup, create a project and start chatting, generating docs, or designing flows."
-        />
-      </div>
-
-      <StepFooter onBack={onBack} onContinue={onContinue} continueLabel="Review terms" />
-    </div>
-  )
-}
-
-function TermsStep({
-  accepted,
-  onAcceptedChange,
-  onBack,
-  onContinue,
-  error
-}: {
-  accepted: boolean
-  onAcceptedChange: (v: boolean) => void
-  onBack: () => void
-  onContinue: () => void
-  error: string | null
-}) {
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-4 space-y-2">
-        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#86868b]">
-          Required
-        </p>
-        <h2 className="text-2xl font-semibold tracking-tight text-[#1d1d1f] dark:text-white">
-          {TERMS_TITLE}
-        </h2>
-        <p className="text-sm text-[#6e6e73] dark:text-[#a1a1a6]">
-          Please read and accept before installation finishes. Version {TERMS_VERSION} · Updated{' '}
-          {TERMS_LAST_UPDATED}
-        </p>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-black/5 bg-white/80 shadow-sm dark:border-white/10 dark:bg-white/5">
-        <ScrollArea className="h-full max-h-[min(42vh,360px)] sm:max-h-[min(48vh,420px)]">
-          <div className="space-y-5 p-5 pr-6">
-            {TERMS_SECTIONS.map((section) => (
-              <div key={section.heading}>
-                <h3 className="text-sm font-semibold text-[#1d1d1f] dark:text-white">
-                  {section.heading}
-                </h3>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-[#6e6e73] dark:text-[#a1a1a6]">
-                  {section.body}
-                </p>
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
-      </div>
-
-      <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-black/5 bg-white/60 px-4 py-3 dark:border-white/10 dark:bg-white/5">
-        <input
-          type="checkbox"
-          checked={accepted}
-          onChange={(e) => onAcceptedChange(e.target.checked)}
-          className="mt-0.5 h-4 w-4 rounded border-black/20 text-[#007AFF] focus:ring-[#007AFF]"
-        />
-        <span className="text-sm leading-snug text-[#1d1d1f] dark:text-white">
-          I have read and agree to the {TERMS_TITLE} for {PRODUCT_NAME}.
-        </span>
-      </label>
-
-      {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
-
-      <StepFooter
-        onBack={onBack}
-        onContinue={onContinue}
-        continueLabel="Accept & install"
-        continueDisabled={!accepted}
-      />
-    </div>
-  )
-}
-
-function PrepareStep({
-  stageIndex,
-  progress,
-  saving
-}: {
-  stageIndex: number
-  progress: number
-  saving: boolean
-}) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-8 text-center">
-      <div className="relative flex h-24 w-24 items-center justify-center">
-        <svg className="absolute inset-0 -rotate-90" viewBox="0 0 96 96" aria-hidden>
-          <circle
-            cx="48"
-            cy="48"
-            r="42"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="4"
-            className="text-black/5 dark:text-white/10"
-          />
-          <motion.circle
-            cx="48"
-            cy="48"
-            r="42"
-            fill="none"
-            stroke="#007AFF"
-            strokeWidth="4"
-            strokeLinecap="round"
-            strokeDasharray={2 * Math.PI * 42}
-            animate={{ strokeDashoffset: 2 * Math.PI * 42 * (1 - progress) }}
-            transition={{ ease: 'linear', duration: 0.05 }}
-          />
-        </svg>
-        <AppLogo className="relative h-10 w-10 rounded-[10px]" />
-      </div>
-
-      <div className="space-y-2">
-        <h2 className="text-2xl font-semibold tracking-tight text-[#1d1d1f] dark:text-white">
-          Installing {PRODUCT_NAME}
-        </h2>
-        <p className="text-sm text-[#86868b]">
-          {saving ? 'Saving your preferences…' : PREPARE_STAGES[stageIndex]?.label}
-        </p>
-        <p className="text-[13px] text-[#6e6e73] dark:text-[#a1a1a6]">
-          {PREPARE_STAGES[stageIndex]?.detail}
-        </p>
-      </div>
-
-      <ul className="w-full max-w-sm space-y-2 text-left">
-        {PREPARE_STAGES.map((stage, i) => {
-          const done = i < stageIndex || progress >= 1
-          const active = i === stageIndex && progress < 1
-          return (
-            <li
-              key={stage.label}
-              className={cn(
-                'flex items-center gap-3 rounded-xl px-3 py-2 text-sm',
-                active && 'bg-[#007AFF]/8 text-[#1d1d1f] dark:text-white',
-                done && 'text-[#1d1d1f] dark:text-white',
-                !done && !active && 'text-[#86868b]'
-              )}
-            >
-              <span
-                className={cn(
-                  'flex h-5 w-5 items-center justify-center rounded-full',
-                  done || active ? 'bg-[#007AFF] text-white' : 'bg-black/5 dark:bg-white/10'
-                )}
-              >
-                {done ? (
-                  <Check className="h-3 w-3" />
-                ) : active ? (
-                  <Loader2 className="h-3 w-3 animate-spin text-white" />
-                ) : null}
-              </span>
-              {stage.label}
-            </li>
-          )
-        })}
-      </ul>
-    </div>
-  )
-}
-
-function ReadyStep({ onFinish }: { onFinish: () => void }) {
-  return (
-    <div className="flex h-full flex-col justify-between gap-8">
-      <div className="mx-auto max-w-lg space-y-6 pt-8 text-center">
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#34C759]/15 text-[#34C759]"
-        >
-          <Check className="h-8 w-8" strokeWidth={2.5} />
-        </motion.div>
-        <div className="space-y-3">
-          <h2 className="text-2xl font-semibold tracking-tight text-[#1d1d1f] sm:text-3xl dark:text-white">
-            You’re all set
-          </h2>
-          <p className="text-sm leading-relaxed text-[#6e6e73] dark:text-[#a1a1a6]">
-            Your workspace is ready on this device. Add an API key in{' '}
-            <span className="font-medium text-[#1d1d1f] dark:text-white">Settings → AI</span>, then
-            create a project and start working.
-          </p>
-        </div>
-        <div className="rounded-2xl border border-black/5 bg-white/70 px-4 py-3 text-left text-[13px] leading-relaxed text-[#6e6e73] shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-[#a1a1a6]">
-          Tip: Connect OpenAI or local Ollama whenever you need AI. Until then, you can still browse
-          projects, docs, and tools offline.
-        </div>
-      </div>
-      <div className="flex flex-col items-center gap-3 pb-2 sm:flex-row sm:justify-center">
-        <Button
-          size="lg"
-          className="min-w-[200px] rounded-full bg-[#007AFF] px-8 text-white hover:bg-[#0071e3]"
-          onClick={onFinish}
-        >
-          Get started
-        </Button>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <StepHeading eyebrow="Local-first" title="Your APIs, your machine">
+        {PRODUCT_NAME} works offline and keeps everything on this device. Here’s what that means.
+      </StepHeading>
+      <div className="grid min-h-0 flex-1 auto-rows-min gap-2.5 overflow-y-auto sm:grid-cols-2">
+        {PRIVACY_POINTS.map((item, i) => (
+          <FeatureCard key={item.title} {...item} delay={0.05 * i} inline />
+        ))}
       </div>
     </div>
   )
 }
 
-function InfoRow({
+function FeatureCard({
   icon: Icon,
   title,
-  detail
+  detail,
+  delay,
+  inline = false
 }: {
-  icon: typeof HardDrive
+  icon: LucideIcon
   title: string
   detail: string
+  delay: number
+  /** Icon beside the text instead of above it. */
+  inline?: boolean
 }) {
   return (
-    <div className="flex gap-3 rounded-2xl border border-black/5 bg-white/70 p-4 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#007AFF]/10 text-[#007AFF]">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay, duration: 0.3, ease: EASE }}
+      className={cn(
+        'rounded-xl border border-border/70 bg-card/80 p-3.5 shadow-soft backdrop-blur-sm',
+        inline && 'flex gap-3'
+      )}
+    >
+      <div
+        className={cn(
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary',
+          !inline && 'mb-2.5'
+        )}
+      >
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0">
-        <h3 className="text-sm font-semibold text-[#1d1d1f] dark:text-white">{title}</h3>
-        <p className="mt-0.5 text-[13px] leading-relaxed text-[#6e6e73] dark:text-[#a1a1a6]">
-          {detail}
-        </p>
+        <h3 className="text-[13px] font-semibold">{title}</h3>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">{detail}</p>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
-function StepFooter({
-  onBack,
-  onContinue,
-  continueLabel = 'Continue',
-  continueDisabled = false
-}: {
-  onBack: () => void
-  onContinue: () => void
-  continueLabel?: string
-  continueDisabled?: boolean
-}) {
+function ReadyStep({ onFinish }: { onFinish: (destination: SetupDestination) => void }) {
   return (
-    <div className="mt-auto flex items-center justify-between gap-3 pt-6">
-      <Button variant="ghost" className="rounded-full text-[#007AFF] hover:bg-[#007AFF]/10" onClick={onBack}>
-        Back
-      </Button>
+    <div className="flex flex-1 flex-col items-center justify-center pb-6 text-center">
+      <motion.div
+        initial={{ scale: 0.7, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: 'spring', stiffness: 260, damping: 18 }}
+        className="mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+      >
+        <Check className="h-7 w-7" strokeWidth={2.5} />
+      </motion.div>
+      <h2 className="text-[1.75rem] font-semibold tracking-tight">You’re all set</h2>
+      <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
+        Pick a place to start, or jump straight into the workspace.
+      </p>
+
+      <div className="mt-7 grid w-full max-w-2xl gap-2.5 sm:grid-cols-3">
+        {READY_OPTIONS.map((option, i) => (
+          <motion.button
+            key={option.destination}
+            type="button"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 + 0.05 * i, duration: 0.3, ease: EASE }}
+            onClick={() => onFinish(option.destination)}
+            className="group flex flex-col items-start rounded-xl border border-border/70 bg-card/80 p-4 text-left shadow-soft transition-colors hover:border-primary/40 hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          >
+            <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <option.icon className="h-4 w-4" />
+            </div>
+            <span className="flex items-center gap-1 text-[13px] font-semibold">
+              {option.title}
+              <ArrowRight className="h-3.5 w-3.5 -translate-x-1 opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
+            </span>
+            <span className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">
+              {option.detail}
+            </span>
+          </motion.button>
+        ))}
+      </div>
+
       <Button
         size="lg"
-        className="rounded-full bg-[#007AFF] px-7 text-white hover:bg-[#0071e3]"
-        disabled={continueDisabled}
-        onClick={onContinue}
+        className="mt-7 min-w-[200px] rounded-full"
+        onClick={() => onFinish('workspace')}
+        autoFocus
       >
-        {continueLabel}
+        Open {PRODUCT_NAME} <ArrowRight />
       </Button>
     </div>
   )
-}
-
-/** Used by App boot to decide whether to show SetupFlow. */
-export async function loadOnboardingComplete(): Promise<boolean> {
-  const api = await waitForDesktopApi()
-  if (api?.onboarding) {
-    const result = await api.onboarding.get()
-    if (result.success && result.data) return result.data.isComplete
-    return false
-  }
-
-  try {
-    const raw = localStorage.getItem(FALLBACK_STORAGE_KEY)
-    if (!raw) return false
-    const parsed = JSON.parse(raw) as { termsVersion?: string; setupCompletedAt?: string }
-    return Boolean(parsed.setupCompletedAt && parsed.termsVersion === TERMS_VERSION)
-  } catch {
-    return false
-  }
 }

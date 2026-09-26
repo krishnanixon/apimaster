@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cn, formatRelativeTime, DOCUMENT_TYPE_LABELS } from '../src/shared/lib/utils'
+import { cn, formatRelativeTime } from '../src/shared/lib/utils'
 
 describe('utils', () => {
   it('cn merges class names', () => {
@@ -10,10 +10,5 @@ describe('utils', () => {
   it('formatRelativeTime returns readable time', () => {
     const now = new Date().toISOString()
     expect(formatRelativeTime(now)).toBe('Just now')
-  })
-
-  it('DOCUMENT_TYPE_LABELS has all types', () => {
-    expect(DOCUMENT_TYPE_LABELS.requirements).toBe('Requirements')
-    expect(DOCUMENT_TYPE_LABELS.user_stories).toBe('User Stories')
   })
 })

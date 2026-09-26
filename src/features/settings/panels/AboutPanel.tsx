@@ -51,11 +51,11 @@ export function AboutPanel() {
           </Button>
         </SettingsRow>
         <SettingsRow
-          label="2. Create a project"
-          description="Projects hold your documents, flows, and knowledge base."
+          label="2. Send your first request"
+          description="Create a collection, or import from Postman or cURL."
         >
-          <Button variant="outline" size="sm" onClick={() => navigate('/dashboard')}>
-            Go to dashboard
+          <Button variant="outline" size="sm" onClick={() => navigate('/')}>
+            Open {PRODUCT_NAME}
           </Button>
         </SettingsRow>
       </SettingsGroup>
@@ -63,7 +63,7 @@ export function AboutPanel() {
       <SettingsGroup title="Privacy & legal" icon={Scale} flush>
         <SettingsRow
           label="Local-first storage"
-          description="All projects and settings are stored on this device."
+          description="All collections, environments, and settings are stored on this device."
         >
           <HardDrive className="h-4 w-4 text-muted-foreground" />
         </SettingsRow>

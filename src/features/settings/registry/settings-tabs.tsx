@@ -1,31 +1,15 @@
 import type { ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import {
-  SlidersHorizontal,
-  Palette,
-  FileOutput,
-  Info,
-  Sparkles,
-  BarChart3,
-  Database,
-  LayoutGrid,
-  Boxes,
-  Mic
-} from 'lucide-react'
+import { Palette, Info, Sparkles, BarChart3, Cable } from 'lucide-react'
 import type { SettingsTabId } from '@shared/settings'
 import { getCentralizedSettingsDomains } from '@shared/settings'
-import { GeneralPanel } from '@/features/settings/panels/GeneralPanel'
-import { AppsPanel } from '@/features/settings/panels/AppsPanel'
-import { DatabasePanel } from '@/features/settings/panels/DatabasePanel'
-import { VectorPanel } from '@/features/settings/panels/VectorPanel'
-import { VoicePanel } from '@/features/settings/panels/VoicePanel'
-import { ExportPanel } from '@/features/settings/panels/ExportPanel'
 import { AboutPanel } from '@/features/settings/panels/AboutPanel'
 import { UsageDashboard } from '@/features/settings/components/UsageDashboard'
 import { ThemeStudio } from '@/features/settings/components/ThemeStudio'
 import { AISettings } from '@/features/ai/components/AISettings'
+import { McpSettings } from '@/features/settings/components/McpSettings'
 
-export type SettingsGroupId = 'workspace' | 'intelligence' | 'integrations' | 'help'
+export type SettingsGroupId = 'workspace' | 'intelligence' | 'help'
 
 export interface SettingsTabEntry {
   id: SettingsTabId
@@ -40,8 +24,7 @@ export interface SettingsTabEntry {
 
 export const SETTINGS_GROUPS: { id: SettingsGroupId; label: string }[] = [
   { id: 'workspace', label: 'Workspace' },
-  { id: 'intelligence', label: 'AI & Voice' },
-  { id: 'integrations', label: 'Integrations' },
+  { id: 'intelligence', label: 'AI' },
   { id: 'help', label: 'Help' }
 ]
 
@@ -54,21 +37,6 @@ const TAB_META: Record<
     Panel: ComponentType<{ global?: boolean }>
   }
 > = {
-  general: {
-    icon: SlidersHorizontal,
-    group: 'workspace',
-    keywords: [
-      'auto-save',
-      'autosave',
-      'workflow',
-      'simple',
-      'expert',
-      'rules',
-      'generation',
-      'storage'
-    ],
-    Panel: GeneralPanel
-  },
   appearance: {
     icon: Palette,
     group: 'workspace',
@@ -84,12 +52,6 @@ const TAB_META: Record<
       'contrast'
     ],
     Panel: () => <ThemeStudio />
-  },
-  export: {
-    icon: FileOutput,
-    group: 'workspace',
-    keywords: ['pdf', 'docx', 'word', 'page size', 'a4', 'letter', 'watermark', 'cover', 'folder'],
-    Panel: ExportPanel
   },
   ai: {
     icon: Sparkles,
@@ -108,44 +70,25 @@ const TAB_META: Record<
     ],
     Panel: () => <AISettings />
   },
-  voice: {
-    icon: Mic,
+  mcp: {
+    icon: Cable,
     group: 'intelligence',
     keywords: [
-      'tess',
-      'microphone',
-      'whisper',
-      'speech',
-      'dictation',
-      'wake word',
-      'tts',
-      'kokoro'
+      'mcp',
+      'claude',
+      'cursor',
+      'agent',
+      'model context protocol',
+      'desktop',
+      'tool'
     ],
-    Panel: VoicePanel
+    Panel: () => <McpSettings />
   },
   usage: {
     icon: BarChart3,
     group: 'intelligence',
     keywords: ['cost', 'spend', 'tokens', 'billing', 'requests'],
     Panel: () => <UsageDashboard />
-  },
-  apps: {
-    icon: LayoutGrid,
-    group: 'integrations',
-    keywords: ['modules', 'sidebar', 'menu', 'tools', 'hide', 'show', 'services'],
-    Panel: AppsPanel
-  },
-  database: {
-    icon: Database,
-    group: 'integrations',
-    keywords: ['sql', 'postgres', 'mysql', 'sqlite', 'connection', 'query', 'workbench'],
-    Panel: DatabasePanel
-  },
-  vector: {
-    icon: Boxes,
-    group: 'integrations',
-    keywords: ['chroma', 'litechroma', 'rag', 'embeddings', 'search', 'collection'],
-    Panel: VectorPanel
   },
   about: {
     icon: Info,

@@ -1,113 +1,62 @@
-# Tessarok
+# APIMaster
 
-A production-ready Electron desktop application — an all-in-one AI-powered developer workbench.
+A local-first desktop API client with built-in AI. No accounts, no cloud.
+
+> Status: early. The full README, license, and contribution guide come with the
+> open-source release.
 
 ## Features
 
-- **AI Chat Interface** — Streaming responses with OpenAI or local Ollama; switch providers from the header
-- **Secure API Key Storage** — Encrypted local storage via Electron safeStorage
-- **Project Management** — Create, open, archive, duplicate, and track recent projects
-- **AI Document Generation** — Generate 10 types of requirement documents in 3 styles
-- **Rich Text Editor** — Tiptap editor with headings, tables, images, checklists, code blocks
-- **Export** — PDF and DOCX with cover page, TOC, and page numbers; configurable defaults in Settings
-- **Auto-save & Versioning** — Configurable auto-save interval with full version history
-- **Full-text Search** — Local indexing across documents and conversations
-- **Themes** — System-aware color mode, visual themes, and layout density
-- **Voice Assistant** — Push-to-talk voice conversations with STT, AI, TTS, tools, and local history
+- **Requests**: REST, GraphQL, and WebSocket, with params, headers, body (JSON, form, raw, binary), and auth (Bearer, Basic, API key, OAuth 2.0)
+- **Collections**: folders, inherited auth and settings, request history, tabs
+- **Environments**: `{{variables}}` with per-environment values
+- **Scripts & tests**: pre-request scripts, assertions, and a collection runner with reports
+- **Import / export**: import Postman and cURL; export Postman, OpenAPI, cURL, and Markdown/HTML API docs
+- **Mock Server**: local HTTP mock APIs from collections (`127.0.0.1` by default), parameterized routes, templates, delays, CORS, and request logs
+- **AI Engineer (Phase 1)**: analyze collections/OpenAPI, generate baseline (+ optional AI) tests, run via the existing request engine, failure analysis with evidence
+- **AI**: generate requests from plain English, explain responses, write tests, fix failing requests, and document collections (OpenAI, Anthropic, Gemini, OpenAI-compatible, or local Ollama)
+- **MCP**: a local server so Claude, Cursor, and other agents can list, edit, and send the requests in your live workspace
+- **Bug reports**: built-in diagnostics page with recent logs
 
-## Tech Stack
+## Tech stack
 
-- **Electron** — Secure desktop shell (contextIsolation, no nodeIntegration)
-- **React 19 + TypeScript** — Modern UI with strict typing
-- **Vite + electron-vite** — Fast development and build
-- **TailwindCSS** — Utility-first styling with dark mode
-- **Zustand** — Lightweight state management
-- **SQLite + Prisma** — Local database with ORM
-- **Tiptap** — Extensible rich text editor
-- **OpenAI API** — Cloud AI chat and document generation
-- **Ollama** — Optional local AI for offline use
+Electron, React 19, TypeScript, Vite (electron-vite), TailwindCSS, Zustand, CodeMirror.
 
-## Architecture
+All HTTP traffic runs in the main process; the renderer talks to it over typed IPC
+(`shared/ipc/api.ts`). Settings and AI usage are stored as JSON in the app's data folder;
+API keys are encrypted with Electron `safeStorage`.
+
+## Project layout
 
 ```
-├── electron/
-│   ├── main/           # Main process (services, repositories, IPC)
-│   └── preload/        # contextBridge API exposure
-├── src/
-│   ├── app/            # App shell and routing
-│   ├── features/       # Feature modules (chat, documents, editor, projects, settings)
-│   └── shared/         # Shared components, hooks, stores, utilities
-├── shared/             # Cross-process types and IPC contracts
-└── prisma/             # Database schema
+electron/
+  main/
+    api-studio/   HTTP client, auth, OAuth 2.0, scripts/tests, AI helpers
+    ai/           AI providers, routing, metrics
+    infra/        logger, API keys, onboarding, bug reports, JSON store
+    ipc/          IPC handlers
+    mock-server/  local HTTP mock server runtime
+    mcp/          local MCP server for Claude, Cursor, and other agents
+    windows/      main window
+  preload/        contextBridge API
+src/
+  modules/api-studio/   the API client UI
+  features/             settings, AI settings, onboarding, diagnostics
+  shared/               UI components, stores, utilities
+shared/                 cross-process types and IPC contract
+tests/                  vitest
 ```
 
-## Getting Started
+## Development
 
-### Prerequisites
-
-- Node.js 20+
-- npm 10+
-
-### Installation
+Requires Node.js 20+.
 
 ```bash
 npm install
-npm run db:push
-```
-
-### Development
-
-```bash
 npm run dev
 ```
 
-### Build
-
 ```bash
-npm run build
-npm run dist
+npm run verify   # typecheck + tests + build
+npm run dist:mac # or dist:win / dist:linux
 ```
-
-### Scripts
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start development server |
-| `npm run build` | Build for production |
-| `npm run dist` | Package for distribution |
-| `npm run lint` | Run ESLint |
-| `npm run format` | Run Prettier |
-| `npm run typecheck` | TypeScript type checking |
-
-## Configuration
-
-1. Launch the application
-2. Open **App Settings** from the sidebar
-3. Under **AI**, add your OpenAI API key or connect Ollama for local models
-4. Adjust **General** auto-save, **Appearance** theme, and **Export** defaults as needed
-5. Per-project context is managed in **Knowledge Base → Overview** inside each project
-
-## Voice Assistant
-
-Enable the **Voice Assistant** module from Apps, then open it from the sidebar.
-
-1. Configure an AI provider under **Settings → AI** (OpenAI key is stored with OS encryption; Ollama is local).
-2. Open **Voice Assistant**. Allow microphone access when prompted.
-3. Hold the microphone (or **Ctrl/⌘ + Space**), speak, and release.
-4. Browser STT keeps audio on-device. Switch to OpenAI Whisper in **Settings → Voice** if you want cloud transcription.
-5. System TTS speaks locally. OpenAI TTS is optional.
-6. Conversations, notes created by tools, and voice settings live under the app user-data folder. **Delete all local voice data** clears them.
-
-See `src/modules/voice-assistant/ARCHITECTURE.md` for providers, tools, and the future Workbench integration boundary.
-
-## Security
-
-- `contextIsolation: true` — Renderer isolated from Node.js
-- `nodeIntegration: false` — No direct Node access in renderer
-- `sandbox: true` — Preload script sandboxed
-- API keys encrypted via Electron `safeStorage`
-- Content Security Policy enforced
-
-## License
-
-MIT

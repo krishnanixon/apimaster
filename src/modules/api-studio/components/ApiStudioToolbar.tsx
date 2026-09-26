@@ -11,7 +11,8 @@ import {
 import { cn } from '@/shared/lib/utils'
 import { EnvironmentSelector } from './EnvironmentSelector'
 import { useApiStudioStore } from '../stores/apiStudioStore'
-import type { RequestType } from '../types/api.types'
+import type { RequestTab, RequestType } from '../types/api.types'
+import { applyRequestType } from '../services/graphql/model'
 
 interface ApiStudioToolbarProps {
   tabId: string
@@ -23,6 +24,8 @@ interface ApiStudioToolbarProps {
 export function ApiStudioToolbar({ tabId, onSave, onClear, onViewCode }: ApiStudioToolbarProps) {
   const tab = useApiStudioStore((s) => s.tabs.find((t) => t.id === tabId))
   const updateDraft = useApiStudioStore((s) => s.updateDraft)
+  const setRequestView = useApiStudioStore((s) => s.setRequestView)
+  const setResponseView = useApiStudioStore((s) => s.setResponseView)
   const renameRequest = useApiStudioStore((s) => s.renameRequest)
   const disconnectWebSocket = useApiStudioStore((s) => s.disconnectWebSocket)
   const copyTabAsCurl = useApiStudioStore((s) => s.copyTabAsCurl)
@@ -43,11 +46,23 @@ export function ApiStudioToolbar({ tabId, onSave, onClear, onViewCode }: ApiStud
   const { request } = tab
   const collectionId = tab.collectionId
   const isDirty = tab.dirty
+  const requestView = tab.requestView
+  const responseView = tab.responseView
   const displayName = request.name || 'Untitled Request'
 
   function setRequestType(type: RequestType) {
-    updateDraft(tabId, { requestType: type })
-    if (type === 'http') disconnectWebSocket(tabId)
+    updateDraft(tabId, applyRequestType(request, type))
+    if (type !== 'websocket') disconnectWebSocket(tabId)
+    const nextView: RequestTab =
+      type === 'graphql'
+        ? requestView === 'params' || requestView === 'body'
+          ? 'query'
+          : requestView
+        : requestView === 'query' || requestView === 'variables'
+          ? 'body'
+          : requestView
+    if (nextView !== requestView) setRequestView(tabId, nextView)
+    if (type !== 'graphql' && responseView === 'errors') setResponseView(tabId, 'body')
   }
 
   function startRename() {
@@ -110,7 +125,7 @@ export function ApiStudioToolbar({ tabId, onSave, onClear, onViewCode }: ApiStud
       )}
 
       <div className="flex shrink-0 items-center gap-0.5 rounded-md border border-border/60 p-0.5">
-        {(['http', 'websocket'] as const).map((type) => (
+        {(['http', 'graphql', 'websocket'] as const).map((type) => (
           <button
             key={type}
             type="button"
@@ -122,7 +137,7 @@ export function ApiStudioToolbar({ tabId, onSave, onClear, onViewCode }: ApiStud
                 : 'text-muted-foreground hover:text-foreground'
             )}
           >
-            {type === 'http' ? 'HTTP' : 'WS'}
+            {type === 'http' ? 'HTTP' : type === 'graphql' ? 'GQL' : 'WS'}
           </button>
         ))}
       </div>

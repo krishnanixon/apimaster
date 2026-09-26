@@ -29,6 +29,5 @@ export function formatRelativeTime(date: string | Date): string {
   return formatDate(d)
 }
 
-export { DOCUMENT_TYPE_LABELS } from '@shared/lib/project-lifecycle'
 
 export { AI_MODELS } from '@shared/lib/ai-models'

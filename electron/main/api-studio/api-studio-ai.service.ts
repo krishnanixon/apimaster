@@ -1,5 +1,6 @@
 import { aiRouter } from '../ai'
 import { logger } from '../infra/logger.service'
+import { redactBodyContent, redactHeaderMap, redactRequest, redactText } from '@shared/lib/redact-secrets'
 import type {
   ApiRequest,
   DescribeApiRequestInput,
@@ -29,24 +30,29 @@ Return JSON ONLY, matching this exact shape:
 }
 Prefer existing environment placeholders like {{baseUrl}} when those keys are listed. For JSON bodies, "content" must be a pretty-printed JSON string (not an object). Never wrap the JSON in markdown fences. Do not invent real secrets — use placeholders like YOUR_TOKEN.`
 
+function promptBody(data: string, limit: number): string {
+  return redactBodyContent(data).slice(0, limit)
+}
+
 function compactRequest(request: ApiRequest) {
+  const safe = redactRequest(request)
   return {
-    name: request.name,
-    method: request.method,
-    url: request.url,
-    headers: request.headers.filter((h) => h.enabled && h.key.trim()).map((h) => ({ key: h.key, value: h.value })),
-    queryParams: request.queryParams
+    name: safe.name,
+    method: safe.method,
+    url: safe.url,
+    headers: safe.headers.filter((h) => h.enabled && h.key.trim()).map((h) => ({ key: h.key, value: h.value })),
+    queryParams: safe.queryParams
       .filter((p) => p.enabled && p.key.trim())
       .map((p) => ({ key: p.key, value: p.value })),
-    pathParams: (request.pathParams ?? [])
+    pathParams: (safe.pathParams ?? [])
       .filter((p) => p.enabled && p.key.trim())
       .map((p) => ({ key: p.key, value: p.value })),
     body: {
-      type: request.body.type,
-      content: request.body.content.slice(0, 4000)
+      type: safe.body.type,
+      content: safe.body.content.slice(0, 4000)
     },
-    auth: { type: request.auth.type, apiKeyLocation: request.auth.apiKeyLocation, apiKeyName: request.auth.apiKeyName },
-    description: request.description ?? ''
+    auth: { type: safe.auth.type, apiKeyLocation: safe.auth.apiKeyLocation, apiKeyName: safe.auth.apiKeyName },
+    description: safe.description ?? ''
   }
 }
 
@@ -121,7 +127,7 @@ export class ApiStudioAIService {
     const context = `Current request:
 ${JSON.stringify(compactRequest(input.request), null, 2)}
 
-${input.response ? `Last response: status ${input.response.status} ${input.response.statusText}\nBody: ${input.response.data.slice(0, 2000)}` : ''}
+${input.response ? `Last response: status ${input.response.status} ${input.response.statusText}\nBody: ${input.response.isBinary ? '[binary payload]' : promptBody(input.response.data, 2000)}` : ''}
 ${input.errorMessage ? `Error: ${input.errorMessage}` : ''}
 ${envHint(input.environmentKeys)}`
 
@@ -285,7 +291,7 @@ Be specific to the given request. Do not invent endpoints.`
           role: 'user',
           content: `Review this request:
 ${JSON.stringify(compactRequest(input.request), null, 2)}
-${input.response ? `Last response: ${input.response.status} ${input.response.statusText}\n${input.response.data.slice(0, 1500)}` : 'No response yet.'}`
+${input.response ? `Last response: ${input.response.status} ${input.response.statusText}\n${input.response.isBinary ? '[binary payload]' : promptBody(input.response.data, 1500)}` : 'No response yet.'}`
         }
       ],
       {
@@ -341,7 +347,7 @@ ${JSON.stringify(compactRequest(input.request), null, 2)}`
   async explainResponse(input: ExplainApiResponseInput): Promise<string> {
     const bodyPreview = input.response.isBinary
       ? '[binary payload]'
-      : input.response.data.slice(0, 4000)
+      : promptBody(input.response.data, 4000)
 
     try {
       const result = await aiRouter.chat(
@@ -353,11 +359,11 @@ ${JSON.stringify(compactRequest(input.request), null, 2)}`
           },
           {
             role: 'user',
-            content: `Request: ${input.request.method} ${input.request.url}
+            content: `Request: ${input.request.method} ${redactText(input.request.url)}
 
 Response status: ${input.response.status} ${input.response.statusText}
 Response time: ${input.response.timeMs}ms
-Response headers: ${JSON.stringify(input.response.headers)}
+Response headers: ${JSON.stringify(redactHeaderMap(input.response.headers))}
 Response body:
 ${bodyPreview}
 
@@ -393,10 +399,10 @@ Return ONLY the JavaScript test script body (no markdown fences, no explanation)
           },
           {
             role: 'user',
-            content: `Request: ${input.request.method} ${input.request.url}
+            content: `Request: ${input.request.method} ${redactText(input.request.url)}
 Response status: ${input.response.status}
 Response body sample:
-${input.response.isBinary ? '[binary payload]' : input.response.data.slice(0, 2000)}
+${input.response.isBinary ? '[binary payload]' : promptBody(input.response.data, 2000)}
 
 Generate 3-5 meaningful pm.test assertions for this response (status code, response time, key fields, content type as applicable).`
           }
@@ -420,13 +426,14 @@ Generate 3-5 meaningful pm.test assertions for this response (status code, respo
   }
 
   async describeRequest(input: DescribeApiRequestInput): Promise<string> {
+    const safe = redactRequest(input.request)
     const bodyPreview =
-      input.request.body.type === 'none'
+      safe.body.type === 'none'
         ? '(none)'
-        : input.request.body.content.slice(0, 3000) ||
-          (input.request.body.formData
+        : safe.body.content.slice(0, 3000) ||
+          (safe.body.formData
             ? JSON.stringify(
-                input.request.body.formData
+                safe.body.formData
                   .filter((f) => f.enabled)
                   .map((f) => ({ key: f.key, type: f.type, value: f.type === 'file' ? f.fileName : f.value })),
                 null,
@@ -446,13 +453,13 @@ Be specific to the given payload — do not invent unrelated endpoints.`
           },
           {
             role: 'user',
-            content: `Name: ${input.request.name}
-Method: ${input.request.method}
-URL: ${input.request.url}
-Auth: ${input.request.auth.type}
-Query: ${JSON.stringify(input.request.queryParams.filter((p) => p.enabled && p.key.trim()))}
-Headers: ${JSON.stringify(input.request.headers.filter((h) => h.enabled && h.key.trim()).map((h) => h.key))}
-Body type: ${input.request.body.type}
+            content: `Name: ${safe.name}
+Method: ${safe.method}
+URL: ${safe.url}
+Auth: ${safe.auth.type}
+Query: ${JSON.stringify(safe.queryParams.filter((p) => p.enabled && p.key.trim()).map((p) => ({ key: p.key, value: p.value })))}
+Headers: ${JSON.stringify(safe.headers.filter((h) => h.enabled && h.key.trim()).map((h) => ({ key: h.key, value: h.value })))}
+Body type: ${safe.body.type}
 Body:
 ${bodyPreview}
 

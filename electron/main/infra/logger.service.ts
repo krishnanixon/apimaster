@@ -1,4 +1,5 @@
 import type { LogEntry } from '@shared/types'
+import { redactText } from '@shared/lib/redact-secrets'
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
@@ -20,6 +21,8 @@ class LoggerService {
   write(entry: Omit<LogEntry, 'timestamp'>): void {
     const logEntry: LogEntry = {
       ...entry,
+      message: redactText(entry.message),
+      context: entry.context ? redactText(entry.context) : undefined,
       timestamp: new Date().toISOString()
     }
     const line = JSON.stringify(logEntry) + '\n'

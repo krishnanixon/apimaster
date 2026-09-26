@@ -21,6 +21,8 @@ export function useApiStudioShortcuts(handlers: ShortcutHandlers = {}): void {
   const setActiveTab = useApiStudioStore((s) => s.setActiveTab)
   const saveTab = useApiStudioStore((s) => s.saveTab)
   const copyTabAsCurl = useApiStudioStore((s) => s.copyTabAsCurl)
+  const fetchGraphQLSchema = useApiStudioStore((s) => s.fetchGraphQLSchema)
+  const formatGraphQLQuery = useApiStudioStore((s) => s.formatGraphQLQuery)
   const handlersRef = useRef(handlers)
   handlersRef.current = handlers
 
@@ -32,6 +34,21 @@ export function useApiStudioShortcuts(handlers: ShortcutHandlers = {}): void {
         e.preventDefault()
         if (activeTabId) void sendTabRequest(activeTabId)
         return
+      }
+
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'g') {
+        e.preventDefault()
+        if (activeTabId) void fetchGraphQLSchema(activeTabId)
+        return
+      }
+
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'f' && !e.defaultPrevented) {
+        const tab = tabs.find((item) => item.id === activeTabId)
+        if (tab?.request.requestType === 'graphql' && activeTabId) {
+          e.preventDefault()
+          formatGraphQLQuery(activeTabId)
+          return
+        }
       }
 
       if (mod && e.key.toLowerCase() === 's' && !e.shiftKey) {
@@ -76,5 +93,5 @@ export function useApiStudioShortcuts(handlers: ShortcutHandlers = {}): void {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeTabId, tabs, sendTabRequest, openScratchTab, closeTab, setActiveTab, saveTab, copyTabAsCurl])
+  }, [activeTabId, tabs, sendTabRequest, openScratchTab, closeTab, setActiveTab, saveTab, copyTabAsCurl, fetchGraphQLSchema, formatGraphQLQuery])
 }

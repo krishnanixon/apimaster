@@ -11,10 +11,7 @@
     "baseUrl": ".",
     "paths": {
       "@main/*": ["electron/main/*"],
-      "@shared/*": ["shared/*"],
-      "@vps/*": ["src/modules/vps-manager/*"],
-      "@clipboard/*": ["src/modules/clipboard-manager/*"],
-      "@prisma/*": ["generated/prisma/*"]
+      "@shared/*": ["shared/*"]
     },
     "types": ["node"]
   },
@@ -22,9 +19,6 @@
     "electron.vite.config.ts",
     "electron/main/**/*",
     "electron/preload/**/*",
-    "shared/**/*",
-    "prisma/**/*",
-    "src/modules/vps-manager/core/**/*",
-    "src/modules/clipboard-manager/**/*"
+    "shared/**/*"
   ]
 }

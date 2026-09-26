@@ -3,13 +3,13 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { join } from 'path'
 import type { BugReport, CreateBugReportInput, LogEntry } from '@shared/types'
+import { redactText } from '@shared/lib/redact-secrets'
 import { logger } from './logger.service'
 
 const MAX_FIELD_LENGTH = 20_000
-const SECRET_PATTERN = /(api[-_ ]?key|authorization|token|password|secret)(["' ]*[:=]["' ]*)([^\s,"'}]+)/gi
 
 function clean(value = ''): string {
-  return value.slice(0, MAX_FIELD_LENGTH).replace(SECRET_PATTERN, '$1$2[REDACTED]')
+  return redactText(value).slice(0, MAX_FIELD_LENGTH)
 }
 
 function safeLog(entry: LogEntry): LogEntry {

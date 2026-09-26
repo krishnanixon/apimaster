@@ -22,7 +22,7 @@ export function SettingsPageContent({ global }: { global?: boolean }) {
   }, [searchParams])
 
   const setActiveTab = (tab: SettingsTabId) => {
-    setSearchParams(tab === 'general' ? {} : { tab }, { replace: true })
+    setSearchParams(tab === 'ai' ? {} : { tab }, { replace: true })
   }
 
   useEffect(() => {
@@ -35,11 +35,7 @@ export function SettingsPageContent({ global }: { global?: boolean }) {
 
   useEffect(() => {
     const tab = searchParams.get('tab')
-    if (tab === 'modules') {
-      setSearchParams({ tab: 'apps' }, { replace: true })
-      return
-    }
-    if (tab && normalizeSettingsTab(tab) === 'general' && tab !== 'general' && tab !== 'modules') {
+    if (tab && normalizeSettingsTab(tab) !== tab) {
       setSearchParams({}, { replace: true })
     }
   }, [searchParams, setSearchParams])

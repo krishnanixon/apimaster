@@ -5,7 +5,7 @@ import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
 import { cn } from '@/shared/lib/utils'
 import { useApiStudioStore } from '../stores/apiStudioStore'
-import { HTTP_METHODS, METHOD_COLORS } from '../types/api.types'
+import { HTTP_METHODS, METHOD_COLORS, requestProtocolLabel } from '../types/api.types'
 import type { HttpMethod } from '../types/api.types'
 
 function timeAgo(iso: string): string {
@@ -75,8 +75,8 @@ export function HistoryPanel({ embedded = false }: { embedded?: boolean }) {
                   className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-left"
                   title={entry.request.url}
                 >
-                  <span className={cn('shrink-0 font-mono text-[9px] font-bold', METHOD_COLORS[entry.request.method])}>
-                    {entry.request.method}
+                  <span className={cn('shrink-0 font-mono text-[9px] font-bold', METHOD_COLORS[requestProtocolLabel(entry.request)])}>
+                    {requestProtocolLabel(entry.request)}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[11px]">{entry.request.url}</p>

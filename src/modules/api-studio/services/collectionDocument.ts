@@ -1,4 +1,5 @@
 import type { ApiCollection, ApiRequest, KeyValuePair, RequestAuth } from '../types/api.types'
+import { isSensitiveKey, redactBodyContent, redactText } from '@shared/lib/redact-secrets'
 import { generateSnippet } from './codeGenerator'
 import { applyParentInheritance } from './inheritance'
 
@@ -7,8 +8,6 @@ export interface CollectionDocumentOptions {
   includeScripts?: boolean
   includeCodeExamples?: boolean
 }
-
-const SENSITIVE_HEADER = /^(authorization|x-api-key|api-key|cookie|set-cookie)$/i
 
 function escapeHtml(value: string): string {
   return value
@@ -29,7 +28,7 @@ function enabledPairs(pairs: KeyValuePair[], redactSecrets: boolean): { key: str
     .filter((p) => p.enabled && p.key.trim())
     .map((p) => ({
       key: p.key,
-      value: SENSITIVE_HEADER.test(p.key) ? redact(p.value, redactSecrets) : p.value
+      value: isSensitiveKey(p.key) ? redact(p.value, redactSecrets) : p.value
     }))
 }
 
@@ -62,6 +61,28 @@ function describeAuth(auth: RequestAuth, redactSecrets: boolean): string {
   }
 }
 
+function protocolLabel(request: ApiRequest): string {
+  if (request.requestType === 'websocket') return 'WebSocket'
+  if (request.requestType === 'graphql') return 'GraphQL'
+  return 'HTTP'
+}
+
+function graphqlMarkdownLines(request: ApiRequest, redactSecrets: boolean): string[] {
+  const lines = ['#### GraphQL', '']
+  if (request.graphql?.operationName) lines.push(`- **Operation:** \`${request.graphql.operationName}\``)
+  const query = request.graphql?.query?.trim()
+  if (query) {
+    lines.push('```graphql', redactSecrets ? redactText(query) : query, '```', '')
+  } else {
+    lines.push('_No query_', '')
+  }
+  const variables = request.graphql?.variables?.trim()
+  if (variables) {
+    lines.push('##### Variables', '', '```json', redactSecrets ? redactBodyContent(variables) : variables, '```', '')
+  }
+  return lines
+}
+
 function groupRequests(collection: ApiCollection): { title: string; requests: ApiRequest[] }[] {
   const groups: { title: string; requests: ApiRequest[] }[] = []
   const root = collection.requests.filter((r) => !r.folderId)
@@ -81,12 +102,12 @@ function requestMarkdown(
   const effective = applyParentInheritance(request, collection)
   const redactSecrets = options.redactSecrets !== false
   const lines: string[] = []
-  const typeLabel = request.requestType === 'websocket' ? 'WebSocket' : 'HTTP'
+  const typeLabel = protocolLabel(request)
 
   lines.push(`### ${request.method} ${request.name}`)
   lines.push('')
   lines.push(`- **Type:** ${typeLabel}`)
-  lines.push(`- **URL:** \`${request.url || '(empty)'}\``)
+  lines.push(`- **URL:** \`${(redactSecrets ? redactText(request.url) : request.url) || '(empty)'}\``)
   lines.push(`- **Auth:** ${describeAuth(effective.auth, redactSecrets)}`)
   lines.push('')
 
@@ -110,19 +131,25 @@ function requestMarkdown(
     lines.push('')
   }
 
-  if (request.body.type !== 'none') {
+  if (request.requestType === 'graphql') {
+    lines.push(...graphqlMarkdownLines(request, redactSecrets))
+  }
+
+  if (request.requestType !== 'graphql' && request.body.type !== 'none') {
     lines.push(`#### Body (\`${request.body.type}\`)`)
     lines.push('')
     if (request.body.type === 'form-data' && request.body.formData?.length) {
       lines.push('| Key | Value | Type |')
       lines.push('| --- | --- | --- |')
       for (const f of request.body.formData.filter((x) => x.enabled && x.key.trim())) {
-        lines.push(`| \`${f.key}\` | \`${f.value}\` | ${f.type} |`)
+        const value = redactSecrets && isSensitiveKey(f.key) ? redact(f.value, true) : f.value
+        lines.push(`| \`${f.key}\` | \`${value}\` | ${f.type} |`)
       }
     } else if (request.body.content.trim()) {
       const lang = request.body.type === 'json' ? 'json' : 'text'
+      const content = redactSecrets ? redactBodyContent(request.body.content) : request.body.content
       lines.push('```' + lang)
-      lines.push(request.body.content)
+      lines.push(content)
       lines.push('```')
     } else {
       lines.push('_Empty body_')
@@ -227,8 +254,14 @@ export function buildCollectionAiSummary(collection: ApiCollection): string {
       auth: applyParentInheritance(r, collection).auth.type,
       headers: enabledPairs(r.headers, true),
       queryParams: enabledPairs(r.queryParams, true),
-      bodyType: r.body.type,
-      bodyPreview: r.body.type === 'none' ? '' : r.body.content.slice(0, 800),
+      bodyType: r.requestType === 'graphql' ? 'graphql' : r.body.type,
+      bodyPreview:
+        r.requestType === 'graphql'
+          ? redactText(r.graphql?.query ?? '').slice(0, 800)
+          : r.body.type === 'none'
+            ? ''
+            : redactBodyContent(r.body.content).slice(0, 800),
+      operationName: r.graphql?.operationName,
       hasPreRequest: Boolean(r.preRequestScript?.trim()),
       hasTests: Boolean(r.tests?.trim())
     }))
@@ -252,12 +285,14 @@ function requestHtml(
   const effective = applyParentInheritance(request, collection)
   const redactSecrets = options.redactSecrets !== false
   const parts: string[] = []
-  const typeLabel = request.requestType === 'websocket' ? 'WebSocket' : 'HTTP'
+  const typeLabel = protocolLabel(request)
 
   parts.push(`<h3><code>${escapeHtml(request.method)}</code> ${escapeHtml(request.name)}</h3>`)
   parts.push('<ul>')
   parts.push(`<li><strong>Type:</strong> ${typeLabel}</li>`)
-  parts.push(`<li><strong>URL:</strong> <code>${escapeHtml(request.url || '(empty)')}</code></li>`)
+  parts.push(
+    `<li><strong>URL:</strong> <code>${escapeHtml((redactSecrets ? redactText(request.url) : request.url) || '(empty)')}</code></li>`
+  )
   parts.push(`<li><strong>Auth:</strong> ${escapeHtml(describeAuth(effective.auth, redactSecrets).replace(/`/g, ''))}</li>`)
   parts.push('</ul>')
 
@@ -273,21 +308,40 @@ function requestHtml(
     parts.push(kvTableHtml(headers))
   }
 
-  if (request.body.type !== 'none') {
+  if (request.requestType === 'graphql') {
+    parts.push('<h4>GraphQL</h4>')
+    if (request.graphql?.operationName) {
+      parts.push(`<p><strong>Operation:</strong> <code>${escapeHtml(request.graphql.operationName)}</code></p>`)
+    }
+    const query = request.graphql?.query?.trim()
+    if (query) {
+      const text = redactSecrets ? redactText(query) : query
+      parts.push(`<pre><code>${escapeHtml(text)}</code></pre>`)
+    }
+    const variables = request.graphql?.variables?.trim()
+    if (variables) {
+      const text = redactSecrets ? redactBodyContent(variables) : variables
+      parts.push('<h5>Variables</h5>')
+      parts.push(`<pre><code>${escapeHtml(text)}</code></pre>`)
+    }
+  }
+
+  if (request.requestType !== 'graphql' && request.body.type !== 'none') {
     parts.push(`<h4>Body (<code>${escapeHtml(request.body.type)}</code>)</h4>`)
     if (request.body.type === 'form-data' && request.body.formData?.length) {
       const rows = request.body.formData
         .filter((f) => f.enabled && f.key.trim())
-        .map(
-          (f) =>
-            `<tr><td><code>${escapeHtml(f.key)}</code></td><td><code>${escapeHtml(f.value)}</code></td><td>${escapeHtml(f.type)}</td></tr>`
-        )
+        .map((f) => {
+          const value = redactSecrets && isSensitiveKey(f.key) ? redact(f.value, true) : f.value
+          return `<tr><td><code>${escapeHtml(f.key)}</code></td><td><code>${escapeHtml(value)}</code></td><td>${escapeHtml(f.type)}</td></tr>`
+        })
         .join('')
       parts.push(
         `<table><thead><tr><th>Key</th><th>Value</th><th>Type</th></tr></thead><tbody>${rows}</tbody></table>`
       )
     } else if (request.body.content.trim()) {
-      parts.push(`<pre><code>${escapeHtml(request.body.content)}</code></pre>`)
+      const content = redactSecrets ? redactBodyContent(request.body.content) : request.body.content
+      parts.push(`<pre><code>${escapeHtml(content)}</code></pre>`)
     } else {
       parts.push('<p><em>Empty body</em></p>')
     }

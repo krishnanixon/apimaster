@@ -1,8 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import { Group, Panel, Separator } from 'react-resizable-panels'
-import { Brain, Plus, Terminal, Upload, Webhook } from 'lucide-react'
-import { Button } from '@/shared/components/ui/button'
-import { EmptyState } from '@/shared/components/ui/empty-state'
 import { useApiStudioStore } from '../stores/apiStudioStore'
 import { useApiStudioShortcuts } from '../hooks/useApiStudioShortcuts'
 import { LeftPanel } from '../components/LeftPanel'
@@ -14,17 +13,37 @@ import { ResponseViewer } from '../components/ResponseViewer'
 import { SaveRequestDialog } from '../components/SaveRequestDialog'
 import { CodeSnippetDialog } from '../components/CodeSnippetDialog'
 import { ImportCollectionDialog } from '../components/ImportCollectionDialog'
-import { ImportKnowledgeDialog } from '../components/ImportKnowledgeDialog'
+import { StartScreen } from '../components/StartScreen'
+import { readLaunchIntent, SAMPLE_REQUEST_URL } from '../services/launchIntent'
 import { createDefaultAuth, createDefaultBody, createEmptyKeyValue, splitUrlAndParams } from '../services/requestBuilder'
+import { createDefaultGraphQLConfig } from '../services/graphql/model'
+import { consumeWorkspaceLoadMeta } from '../services/workspaceStorage'
+import { BootScreen } from '@/shared/components/BootScreen'
+
+function useWorkspaceHydrated(): boolean {
+  const [hydrated, setHydrated] = useState(() => useApiStudioStore.persist.hasHydrated())
+  useEffect(() => {
+    if (useApiStudioStore.persist.hasHydrated()) {
+      setHydrated(true)
+      return
+    }
+    return useApiStudioStore.persist.onFinishHydration(() => setHydrated(true))
+  }, [])
+  return hydrated
+}
 
 export function ApiStudioPage() {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false)
   const [codeDialogOpen, setCodeDialogOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [importTab, setImportTab] = useState<'file' | 'collection' | 'curl'>('file')
-  const [knowledgeOpen, setKnowledgeOpen] = useState(false)
 
   useApiStudioShortcuts({ onSaveAs: () => setSaveDialogOpen(true) })
+
+  const location = useLocation()
+  const navigate = useNavigate()
+  // Refs survive StrictMode's double effect run, so an intent is never applied twice.
+  const handledIntentKey = useRef<string | null>(null)
 
   const tabs = useApiStudioStore((s) => s.tabs)
   const collections = useApiStudioStore((s) => s.collections)
@@ -38,6 +57,35 @@ export function ApiStudioPage() {
   const connectWebSocket = useApiStudioStore((s) => s.connectWebSocket)
   const disconnectWebSocket = useApiStudioStore((s) => s.disconnectWebSocket)
   const workspaceSplit = useApiStudioStore((s) => s.workspaceSplit)
+  const hydrated = useWorkspaceHydrated()
+
+  useEffect(() => {
+    if (!hydrated) return
+    const meta = consumeWorkspaceLoadMeta()
+    if (!meta) return
+    if (meta.restored) toast.message('Recovered your workspace from the last good backup.')
+    else if (!meta.encrypted && meta.source !== 'none') {
+      toast.message('Secure storage is unavailable, so the workspace file is not encrypted.')
+    }
+  }, [hydrated])
+
+  useEffect(() => {
+    if (!hydrated) return
+    const intent = readLaunchIntent(location.state)
+    if (!intent || handledIntentKey.current === location.key) return
+    handledIntentKey.current = location.key
+    if (intent === 'new-request') {
+      openScratchTab({ name: 'Sample request', url: SAMPLE_REQUEST_URL })
+    } else {
+      setImportTab('file')
+      setImportOpen(true)
+    }
+    navigate(location.pathname + location.search, { replace: true, state: null })
+  }, [hydrated, location, navigate, openScratchTab])
+
+  if (!hydrated) {
+    return <BootScreen message="Loading workspace…" />
+  }
 
   const activeTab = tabs.find((t) => t.id === activeTabId)
   const hasActiveTab = Boolean(activeTabId && activeTab)
@@ -63,7 +111,7 @@ export function ApiStudioPage() {
   }
 
   function handleClear() {
-    if (!activeTabId) return
+    if (!activeTabId || !activeTab) return
     updateDraft(activeTabId, {
       headers: [createEmptyKeyValue()],
       queryParams: [createEmptyKeyValue()],
@@ -72,7 +120,10 @@ export function ApiStudioPage() {
       auth: createDefaultAuth(),
       tests: '',
       preRequestScript: '',
-      description: ''
+      description: '',
+      ...(activeTab.request.requestType === 'graphql'
+        ? { graphql: { ...(activeTab.request.graphql ?? createDefaultGraphQLConfig()), query: '', variables: '{\n}', operationName: undefined } }
+        : {})
     })
   }
 
@@ -105,6 +156,7 @@ export function ApiStudioPage() {
                   url={activeTab.request.url}
                   loading={activeTab.loading}
                   isWebSocket={activeTab.request.requestType === 'websocket'}
+                  isGraphQL={activeTab.request.requestType === 'graphql'}
                   wsConnected={activeTab.wsConnected}
                   wsConnecting={activeTab.wsConnecting}
                   onMethodChange={(method) => updateDraft(activeTabId!, { method })}
@@ -148,43 +200,12 @@ export function ApiStudioPage() {
                 </Group>
               </>
             ) : (
-              <div className="flex flex-1 items-center justify-center p-6">
-                <EmptyState
-                  icon={<Webhook className="h-5 w-5" />}
-                  title="Start a request"
-                  description="Open a collection item, create a scratch request, or import from cURL, Postman, or project knowledge."
-                  action={
-                    <div className="flex flex-wrap items-center justify-center gap-2">
-                      <Button size="sm" onClick={() => openScratchTab()}>
-                        <Plus className="h-3.5 w-3.5" /> New Request
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setImportTab('file')
-                          setImportOpen(true)
-                        }}
-                      >
-                        <Upload className="h-3.5 w-3.5" /> Import collection
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setImportTab('curl')
-                          setImportOpen(true)
-                        }}
-                      >
-                        <Terminal className="h-3.5 w-3.5" /> Import cURL
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setKnowledgeOpen(true)}>
-                        <Brain className="h-3.5 w-3.5" /> From knowledge
-                      </Button>
-                    </div>
-                  }
-                />
-              </div>
+              <StartScreen
+                onImport={(tab) => {
+                  setImportTab(tab)
+                  setImportOpen(true)
+                }}
+              />
             )}
           </div>
         </Panel>
@@ -211,7 +232,6 @@ export function ApiStudioPage() {
         </>
       )}
       <ImportCollectionDialog open={importOpen} onOpenChange={setImportOpen} defaultTab={importTab} />
-      <ImportKnowledgeDialog open={knowledgeOpen} onOpenChange={setKnowledgeOpen} />
     </div>
   )
 }

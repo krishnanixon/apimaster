@@ -1,5 +1,4 @@
 import { v4 as uuidv4 } from 'uuid'
-import { getPrismaClient, ensureUsageTable } from '../database/client'
 import type {
   ApiUsageDailyStat,
   ApiUsageFeatureStat,
@@ -7,6 +6,11 @@ import type {
   ApiUsageRecord,
   ApiUsageSummary
 } from '@shared/types'
+import { readJsonFile, writeJsonFile } from '../infra/json-store'
+
+const STORE_FILE = 'usage.json'
+/** Keeps the store small; summaries only look back 30 days for daily stats anyway. */
+const MAX_RECORDS = 5000
 
 interface RecordUsageInput {
   feature: string
@@ -18,179 +22,115 @@ interface RecordUsageInput {
   estimatedCost: number
 }
 
-function num(value: unknown): number {
-  if (value === null || value === undefined) return 0
-  const n = typeof value === 'bigint' ? Number(value) : Number(value)
-  return Number.isFinite(n) ? n : 0
+let cache: ApiUsageRecord[] | null = null
+
+function load(): ApiUsageRecord[] {
+  if (!cache) {
+    const raw = readJsonFile<ApiUsageRecord[]>(STORE_FILE, [])
+    cache = Array.isArray(raw) ? raw : []
+  }
+  return cache
 }
 
-/** SQLite CURRENT_TIMESTAMP is UTC 'YYYY-MM-DD HH:MM:SS'; normalize to ISO. */
-function toIso(value: unknown): string {
-  const raw = String(value ?? '')
-  if (!raw) return new Date().toISOString()
-  const parsed = new Date(raw.replace(' ', 'T') + 'Z')
-  return Number.isNaN(parsed.getTime()) ? raw : parsed.toISOString()
+function save(records: ApiUsageRecord[]): void {
+  cache = records
+  writeJsonFile(STORE_FILE, records)
+}
+
+function sum(records: ApiUsageRecord[], key: keyof ApiUsageRecord): number {
+  return records.reduce((total, r) => total + (Number(r[key]) || 0), 0)
+}
+
+function groupBy(records: ApiUsageRecord[], key: (r: ApiUsageRecord) => string): Map<string, ApiUsageRecord[]> {
+  const groups = new Map<string, ApiUsageRecord[]>()
+  for (const r of records) {
+    const k = key(r)
+    const list = groups.get(k)
+    if (list) list.push(r)
+    else groups.set(k, [r])
+  }
+  return groups
 }
 
 export class UsageRepository {
   async record(input: RecordUsageInput): Promise<void> {
-    await ensureUsageTable()
-    const prisma = getPrismaClient()
-    await prisma.$executeRawUnsafe(
-      `INSERT INTO "ApiUsage"
-        ("id", "projectId", "feature", "model", "promptTokens", "completionTokens", "totalTokens", "estimatedCost")
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      uuidv4(),
-      input.projectId ?? null,
-      input.feature,
-      input.model,
-      Math.round(input.promptTokens),
-      Math.round(input.completionTokens),
-      Math.round(input.totalTokens),
-      input.estimatedCost
-    )
+    const record: ApiUsageRecord = {
+      id: uuidv4(),
+      projectId: input.projectId ?? null,
+      feature: input.feature,
+      model: input.model,
+      promptTokens: Math.round(input.promptTokens),
+      completionTokens: Math.round(input.completionTokens),
+      totalTokens: Math.round(input.totalTokens),
+      estimatedCost: input.estimatedCost,
+      createdAt: new Date().toISOString()
+    }
+    save([...load(), record].slice(-MAX_RECORDS))
   }
 
   async getTodayTokenTotal(): Promise<number> {
-    await ensureUsageTable()
-    const prisma = getPrismaClient()
-    const rows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `SELECT COALESCE(SUM("totalTokens"), 0) AS totalTokens
-       FROM "ApiUsage"
-       WHERE date("createdAt") = date('now')`
+    const today = new Date().toISOString().slice(0, 10)
+    return sum(
+      load().filter((r) => r.createdAt.startsWith(today)),
+      'totalTokens'
     )
-    return num(rows[0]?.totalTokens)
   }
 
-  async getSummary(projectId?: string): Promise<ApiUsageSummary> {
-    await ensureUsageTable()
-    const prisma = getPrismaClient()
+  async getSummary(): Promise<ApiUsageSummary> {
+    const records = load()
 
-    const where = projectId ? `WHERE "projectId" = ?` : ''
-    const args = projectId ? [projectId] : []
+    const byModel: ApiUsageModelStat[] = [...groupBy(records, (r) => r.model)]
+      .map(([model, rs]) => ({
+        model,
+        requests: rs.length,
+        promptTokens: sum(rs, 'promptTokens'),
+        completionTokens: sum(rs, 'completionTokens'),
+        totalTokens: sum(rs, 'totalTokens'),
+        estimatedCost: sum(rs, 'estimatedCost')
+      }))
+      .sort((a, b) => b.estimatedCost - a.estimatedCost || b.totalTokens - a.totalTokens)
 
-    const totalsRows = await prisma.$queryRawUnsafe<
-      Array<Record<string, unknown>>
-    >(
-      `SELECT
-         COUNT(*) AS requests,
-         COALESCE(SUM("promptTokens"), 0) AS promptTokens,
-         COALESCE(SUM("completionTokens"), 0) AS completionTokens,
-         COALESCE(SUM("totalTokens"), 0) AS totalTokens,
-         COALESCE(SUM("estimatedCost"), 0) AS estimatedCost,
-         MIN("createdAt") AS firstAt,
-         MAX("createdAt") AS lastAt
-       FROM "ApiUsage" ${where}`,
-      ...args
-    )
-    const totals = totalsRows[0] ?? {}
+    const byFeature: ApiUsageFeatureStat[] = [...groupBy(records, (r) => r.feature)]
+      .map(([feature, rs]) => ({
+        feature,
+        requests: rs.length,
+        totalTokens: sum(rs, 'totalTokens'),
+        estimatedCost: sum(rs, 'estimatedCost')
+      }))
+      .sort((a, b) => b.totalTokens - a.totalTokens)
 
-    const modelRows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `SELECT
-         "model" AS model,
-         COUNT(*) AS requests,
-         COALESCE(SUM("promptTokens"), 0) AS promptTokens,
-         COALESCE(SUM("completionTokens"), 0) AS completionTokens,
-         COALESCE(SUM("totalTokens"), 0) AS totalTokens,
-         COALESCE(SUM("estimatedCost"), 0) AS estimatedCost
-       FROM "ApiUsage" ${where}
-       GROUP BY "model"
-       ORDER BY estimatedCost DESC, totalTokens DESC`,
-      ...args
-    )
-
-    const featureRows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `SELECT
-         "feature" AS feature,
-         COUNT(*) AS requests,
-         COALESCE(SUM("totalTokens"), 0) AS totalTokens,
-         COALESCE(SUM("estimatedCost"), 0) AS estimatedCost
-       FROM "ApiUsage" ${where}
-       GROUP BY "feature"
-       ORDER BY totalTokens DESC`,
-      ...args
-    )
-
-    const dailyWhere = projectId
-      ? `WHERE "projectId" = ? AND "createdAt" >= datetime('now', '-29 days')`
-      : `WHERE "createdAt" >= datetime('now', '-29 days')`
-    const dailyRows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `SELECT
-         date("createdAt") AS date,
-         COUNT(*) AS requests,
-         COALESCE(SUM("totalTokens"), 0) AS totalTokens,
-         COALESCE(SUM("estimatedCost"), 0) AS estimatedCost
-       FROM "ApiUsage" ${dailyWhere}
-       GROUP BY date("createdAt")
-       ORDER BY date("createdAt") ASC`,
-      ...args
-    )
-
-    const recentRows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `SELECT * FROM "ApiUsage" ${where}
-       ORDER BY "createdAt" DESC
-       LIMIT 30`,
-      ...args
-    )
-
-    const byModel: ApiUsageModelStat[] = modelRows.map((r) => ({
-      model: String(r.model ?? ''),
-      requests: num(r.requests),
-      promptTokens: num(r.promptTokens),
-      completionTokens: num(r.completionTokens),
-      totalTokens: num(r.totalTokens),
-      estimatedCost: num(r.estimatedCost)
-    }))
-
-    const byFeature: ApiUsageFeatureStat[] = featureRows.map((r) => ({
-      feature: String(r.feature ?? ''),
-      requests: num(r.requests),
-      totalTokens: num(r.totalTokens),
-      estimatedCost: num(r.estimatedCost)
-    }))
-
-    const daily: ApiUsageDailyStat[] = dailyRows.map((r) => ({
-      date: String(r.date ?? ''),
-      requests: num(r.requests),
-      totalTokens: num(r.totalTokens),
-      estimatedCost: num(r.estimatedCost)
-    }))
-
-    const recent: ApiUsageRecord[] = recentRows.map((r) => ({
-      id: String(r.id ?? ''),
-      projectId: r.projectId == null ? null : String(r.projectId),
-      feature: String(r.feature ?? ''),
-      model: String(r.model ?? ''),
-      promptTokens: num(r.promptTokens),
-      completionTokens: num(r.completionTokens),
-      totalTokens: num(r.totalTokens),
-      estimatedCost: num(r.estimatedCost),
-      createdAt: toIso(r.createdAt)
-    }))
+    const since = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const daily: ApiUsageDailyStat[] = [
+      ...groupBy(
+        records.filter((r) => r.createdAt.slice(0, 10) >= since),
+        (r) => r.createdAt.slice(0, 10)
+      )
+    ]
+      .map(([date, rs]) => ({
+        date,
+        requests: rs.length,
+        totalTokens: sum(rs, 'totalTokens'),
+        estimatedCost: sum(rs, 'estimatedCost')
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date))
 
     return {
-      totalRequests: num(totals.requests),
-      totalPromptTokens: num(totals.promptTokens),
-      totalCompletionTokens: num(totals.completionTokens),
-      totalTokens: num(totals.totalTokens),
-      totalCost: num(totals.estimatedCost),
-      firstRecordedAt: totals.firstAt ? toIso(totals.firstAt) : null,
-      lastRecordedAt: totals.lastAt ? toIso(totals.lastAt) : null,
+      totalRequests: records.length,
+      totalPromptTokens: sum(records, 'promptTokens'),
+      totalCompletionTokens: sum(records, 'completionTokens'),
+      totalTokens: sum(records, 'totalTokens'),
+      totalCost: sum(records, 'estimatedCost'),
+      firstRecordedAt: records[0]?.createdAt ?? null,
+      lastRecordedAt: records[records.length - 1]?.createdAt ?? null,
       byModel,
       byFeature,
       daily,
-      recent
+      recent: records.slice(-30).reverse()
     }
   }
 
-  async clear(projectId?: string): Promise<void> {
-    await ensureUsageTable()
-    const prisma = getPrismaClient()
-    if (projectId) {
-      await prisma.$executeRawUnsafe(`DELETE FROM "ApiUsage" WHERE "projectId" = ?`, projectId)
-    } else {
-      await prisma.$executeRawUnsafe(`DELETE FROM "ApiUsage"`)
-    }
+  async clear(): Promise<void> {
+    save([])
   }
 }
 

@@ -53,7 +53,17 @@ export function applyEnvironmentVariables(request: ApiRequest, variables: Record
         value: substituteVariables(f.value, variables)
       }))
     },
-    auth: substituteAuth(request.auth, variables)
+    auth: substituteAuth(request.auth, variables),
+    graphql: request.graphql
+      ? {
+          ...request.graphql,
+          query: substituteVariables(request.graphql.query, variables),
+          variables: substituteVariables(request.graphql.variables, variables),
+          operationName: request.graphql.operationName
+            ? substituteVariables(request.graphql.operationName, variables)
+            : request.graphql.operationName
+        }
+      : request.graphql
   }
 }
 
@@ -74,6 +84,9 @@ export function extractVariableNames(request: ApiRequest): string[] {
   request.queryParams.forEach((p) => (scan(p.key), scan(p.value)))
   request.pathParams?.forEach((p) => (scan(p.key), scan(p.value)))
   scan(request.body.content)
+  scan(request.graphql?.query)
+  scan(request.graphql?.variables)
+  scan(request.graphql?.operationName)
   for (const value of Object.values(request.auth)) {
     if (typeof value === 'string') scan(value)
   }

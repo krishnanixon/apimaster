@@ -1,30 +1,39 @@
-Tessarok
+APIMaster
 Terms & Conditions
-Version 1.0.0 · Last updated August 21, 2026
+Version 1.1.0 · Last updated September 27, 2026
 
 1. Acceptance of terms
-By installing, downloading, or using Tessarok ("the Software"), you agree to these Terms & Conditions. If you do not agree, do not install or use the Software.
+By installing, downloading, or using APIMaster (“the Software”), you agree to these Terms & Conditions. If you do not agree, do not install or use the Software.
 
-2. License
-Subject to these terms, you are granted a personal, non-exclusive, non-transferable license to install and use the Software on devices you own or control for your own projects and team work. You may not reverse engineer, redistribute, or sell the Software except as permitted by applicable open-source licenses that accompany specific components.
+2. Open-source license
+The Software is distributed under the MIT License. These terms describe how the application behaves and your responsibilities when using it; they do not restrict the rights the MIT License grants you to use, copy, modify, and distribute the source code. If these terms conflict with the MIT License, the MIT License governs.
 
 3. Local-first data
-The Software is designed to store projects, documents, conversations, settings, and related data locally on your device. You are responsible for backing up that data. We do not operate a cloud account for your workspace content.
+Collections, requests, environments, history, and settings are stored locally on your device. The Software does not provide a cloud account or sync service, and does not collect analytics or telemetry. Logs and bug reports are written to your local app data folder and are never uploaded automatically. You are responsible for backing up your data.
 
-4. AI providers and API keys
-Optional AI features require you to supply your own API keys or connect a local model provider (such as Ollama). Keys are stored on your device using the operating system's secure storage when available. AI requests are sent only when you trigger an AI action, and only to the providers you configure. You are responsible for compliance with those providers' terms and for any usage charges.
+4. Requests you send
+HTTP and WebSocket requests, collection runs, and OAuth flows are sent directly from your device to the addresses you enter. You must only send requests to systems you own or are authorized to access and test. Do not use the Software to gain unauthorized access, disrupt services, or exceed the rate limits or terms of the APIs you call. You are responsible for the traffic you generate and its effects.
 
-5. Acceptable use
-You agree not to use the Software for unlawful purposes, to generate or process content you do not have rights to, or in any way that harms others or violates third-party rights. You are solely responsible for content you create, import, or export.
+5. Credentials and secrets
+Tokens, passwords, API keys, and environment variables you enter are stored on this device. Keep your device and user account secure. Collection and environment exports are plain files: review them before sharing or committing them to version control so you do not publish secrets.
 
-6. Disclaimer of warranties
-The Software is provided "as is" without warranties of any kind, express or implied, including merchantability, fitness for a particular purpose, and non-infringement. AI-generated output may be inaccurate; you must review it before relying on it.
+6. Scripts
+Pre-request and test scripts run on your device when you send a request or run a collection. Only run scripts you wrote or obtained from sources you trust, especially in collections you import from others.
 
-7. Limitation of liability
-To the maximum extent permitted by law, the authors and distributors of the Software are not liable for any indirect, incidental, special, consequential, or punitive damages, or for loss of data, profits, or business, arising from your use of the Software.
+7. AI features
+AI features are optional and require your own API key or a local model provider such as Ollama. Provider keys are stored using the operating system’s secure storage when available. Nothing is sent to an AI provider until you trigger an AI action; when you do, the details needed for that action, such as the URL, headers, body, and response excerpts, are sent to the provider you configured. These may contain credentials, so review a request before using AI on it. You are responsible for complying with your provider’s terms and for any usage charges. AI output can be wrong: review generated requests, tests, and explanations before relying on them.
 
-8. Changes
-These terms may be updated when the Software is updated. Continued use after an update that presents a new terms version constitutes acceptance of the revised terms. The version shown during setup is the version you accepted.
+8. Imported content
+You may import Postman collections, OpenAPI documents, and cURL commands. You are responsible for having the right to use content you import, create, or export with the Software.
 
-9. Contact
-For questions about these terms or the Software, refer to the project documentation bundled with the application or the repository maintainers.
+9. Disclaimer of warranties
+The Software is provided “as is” without warranties of any kind, express or implied, including merchantability, fitness for a particular purpose, and non-infringement.
+
+10. Limitation of liability
+To the maximum extent permitted by law, the authors and distributors of the Software are not liable for any indirect, incidental, special, consequential, or punitive damages, or for loss of data, profits, or business, arising from your use of the Software or from requests sent with it.
+
+11. Changes to these terms
+These terms may change when the Software is updated. When they do, the Software shows the new version on launch and asks you to accept it before you continue. The version and date you accepted are shown under Settings → About.
+
+12. Contact
+For questions about these terms or the Software, refer to the project documentation bundled with the application or contact the repository maintainers.

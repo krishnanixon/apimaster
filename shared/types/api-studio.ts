@@ -60,7 +60,40 @@ export function isSignedAuthType(type: AuthType): boolean {
   return type === 'jwt' || type === 'digest' || type === 'oauth1' || type === 'aws' || type === 'hawk'
 }
 
-export type RequestType = 'http' | 'websocket'
+export type RequestType = 'http' | 'websocket' | 'graphql'
+
+/** Cached introspection payload for a GraphQL endpoint. */
+export interface GraphQLSchemaMetadata {
+  /** `data` object from a successful introspection response. */
+  introspection?: Record<string, unknown>
+  fetchedAt?: string
+  /** Endpoint text at fetch time, before environment substitution. */
+  endpoint?: string
+  error?: string
+}
+
+export interface GraphQLRequestConfig {
+  query: string
+  /** JSON object text. Stored as text so an invalid draft is not discarded. */
+  variables: string
+  operationName?: string
+  schema?: GraphQLSchemaMetadata
+}
+
+export interface GraphQLResponseError {
+  message: string
+  path?: ReadonlyArray<string | number>
+  locations?: { line: number; column: number }[]
+}
+
+/** Parsed GraphQL envelope. HTTP status stays on the execution result. */
+export interface GraphQLResponseInfo {
+  data: unknown
+  errors: GraphQLResponseError[]
+  hasErrors: boolean
+  parseError?: string
+  hint?: string
+}
 
 export interface RequestAuth {
   type: AuthType
@@ -131,6 +164,8 @@ export interface ApiRequest {
   /** Free-form notes / description remembered with the request. */
   description?: string
   requestType?: RequestType
+  /** Present when `requestType` is `graphql`. Ignored for HTTP and WebSocket execution. */
+  graphql?: GraphQLRequestConfig
   folderId?: string | null
   /** Per-request timeout; defaults to 30s when omitted. */
   timeoutMs?: number
@@ -196,6 +231,8 @@ export interface ApiExecutionResult {
   sizeBytes: number
   error?: string
   aborted?: boolean
+  /** Set for GraphQL calls so HTTP status and GraphQL errors stay distinct. */
+  graphql?: GraphQLResponseInfo
 }
 
 /** Fully resolved request (simple auth already merged; signed auth applied in main). */

@@ -63,9 +63,22 @@ export function FormDataTable({ fields, onChange }: FormDataTableProps) {
             className={cn(!field.enabled && 'opacity-50')}
           />
           {field.type === 'file' ? (
-            <label className="flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-border px-2 text-xs text-muted-foreground hover:bg-accent">
+            <label
+              className="flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-border px-2 text-xs text-muted-foreground hover:bg-accent"
+              title={
+                field.fileName && !field.fileBase64
+                  ? 'File contents are not stored in the workspace. Choose the file again before sending.'
+                  : undefined
+              }
+            >
               <Paperclip className="h-3 w-3 shrink-0" />
-              <span className="truncate">{field.fileName || 'Choose file'}</span>
+              <span className="truncate">
+                {field.fileName
+                  ? field.fileBase64
+                    ? field.fileName
+                    : `${field.fileName} (re-attach)`
+                  : 'Choose file'}
+              </span>
               <input
                 type="file"
                 className="hidden"

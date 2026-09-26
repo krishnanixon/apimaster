@@ -9,7 +9,7 @@ import {
   ContextMenuTrigger
 } from '@/shared/components/ui/context-menu'
 import { useApiStudioStore } from '../stores/apiStudioStore'
-import { METHOD_COLORS } from '../types/api.types'
+import { METHOD_COLORS, requestProtocolLabel } from '../types/api.types'
 import { ConfirmDialog } from './ConfirmDialog'
 
 const METHOD_BG: Record<string, string> = {
@@ -72,7 +72,7 @@ export function RequestTabBar() {
     <div className="flex h-8 shrink-0 items-stretch overflow-x-auto border-b border-border/60 bg-muted/25">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId
-        const method = tab.request.requestType === 'websocket' ? 'WS' : tab.request.method
+        const method = requestProtocolLabel(tab.request)
         const isEditing = editingTabId === tab.id
         return (
           <ContextMenu key={tab.id}>

@@ -1,3 +1,2 @@
-﻿/** Cross-cutting domain primitives for Tessarok. */
-export * from './scope'
+/** Cross-cutting domain primitives. */
 export * as product from './product'

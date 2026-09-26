@@ -204,9 +204,9 @@ export const useUIStore = create<UIState>()(
       migrate: (persisted, version) => {
         const state = (persisted ?? {}) as Partial<UIState>
         if (version < 2) {
-          return { ...state, themeCustomization: DEFAULT_CUSTOMIZATION, themePresets: [] }
+          return { ...state, themeCustomization: DEFAULT_CUSTOMIZATION, themePresets: [] } as UIState
         }
-        return state
+        return state as UIState
       },
       onRehydrateStorage: () => (state) => {
         if (!state) return

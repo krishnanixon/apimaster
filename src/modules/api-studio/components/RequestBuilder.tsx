@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { Tabs, TabsContent } from '@/shared/components/ui/tabs'
 import { EmptyState } from '@/shared/components/ui/empty-state'
 import { Webhook } from 'lucide-react'
@@ -12,6 +13,8 @@ import { TestsTab } from './request/TestsTab'
 import { NotesTab } from './request/NotesTab'
 import { SettingsTab } from './request/SettingsTab'
 import { WebSocketPanel } from './request/WebSocketPanel'
+import { GraphQLQueryEditor } from './request/GraphQLQueryEditor'
+import { GraphQLVariablesEditor } from './request/GraphQLVariablesEditor'
 import { AIAssistMenu } from './AIAssistMenu'
 import { useApiStudioAi } from '../hooks/useApiStudioAi'
 import {
@@ -22,12 +25,26 @@ import {
   resolveInheritedAuth
 } from '../services/inheritance'
 import type { ApiCollection, ApiRequest, RequestTab } from '../types/api.types'
+import { inspectGraphQL } from '../services/graphql/document'
+import { createDefaultGraphQLConfig } from '../services/graphql/model'
+import { graphQLSchemaStatus, schemaFromIntrospection } from '../services/graphql/schema'
 
-const SUB_TABS: { id: RequestTab; label: string }[] = [
+const HTTP_TABS: { id: RequestTab; label: string }[] = [
   { id: 'params', label: 'Params' },
   { id: 'auth', label: 'Auth' },
   { id: 'headers', label: 'Headers' },
   { id: 'body', label: 'Body' },
+  { id: 'notes', label: 'Notes' },
+  { id: 'pre-request', label: 'Scripts' },
+  { id: 'tests', label: 'Tests' },
+  { id: 'settings', label: 'Settings' }
+]
+
+const GRAPHQL_TABS: { id: RequestTab; label: string }[] = [
+  { id: 'query', label: 'Query' },
+  { id: 'variables', label: 'Variables' },
+  { id: 'auth', label: 'Auth' },
+  { id: 'headers', label: 'Headers' },
   { id: 'notes', label: 'Notes' },
   { id: 'pre-request', label: 'Scripts' },
   { id: 'tests', label: 'Tests' },
@@ -54,6 +71,10 @@ function tabBadge(
     }
     case 'body':
       return request.body.type !== 'none' ? '●' : null
+    case 'query':
+      return request.graphql?.query.trim() ? '●' : null
+    case 'variables':
+      return request.graphql?.variables.trim() && request.graphql.variables.trim() !== '{}' ? '●' : null
     case 'notes':
       return request.description?.trim() ? '●' : null
     case 'auth': {
@@ -79,13 +100,32 @@ export function RequestBuilder({ tabId }: { tabId: string }) {
   const updateDraft = useApiStudioStore((s) => s.updateDraft)
   const setRequestView = useApiStudioStore((s) => s.setRequestView)
   const runTabTests = useApiStudioStore((s) => s.runTabTests)
+  const fetchGraphQLSchema = useApiStudioStore((s) => s.fetchGraphQLSchema)
+  const formatGraphQLQuery = useApiStudioStore((s) => s.formatGraphQLQuery)
   const sendWebSocketMessage = useApiStudioStore((s) => s.sendWebSocketMessage)
   const clearWebSocketMessages = useApiStudioStore((s) => s.clearWebSocketMessages)
   const connectWebSocket = useApiStudioStore((s) => s.connectWebSocket)
   const disconnectWebSocket = useApiStudioStore((s) => s.disconnectWebSocket)
   const ai = useApiStudioAi(tabId)
+  const request = tab?.request
+  const isGraphQL = request?.requestType === 'graphql'
+  const graphqlConfig = request?.graphql ?? createDefaultGraphQLConfig()
+  const graphqlSchema = useMemo(
+    () => (isGraphQL ? schemaFromIntrospection(graphqlConfig.schema?.introspection) : null),
+    [graphqlConfig.schema?.introspection, isGraphQL]
+  )
+  const graphqlInspection = useMemo(
+    () =>
+      inspectGraphQL({
+        query: graphqlConfig.query,
+        variablesText: graphqlConfig.variables,
+        operationName: graphqlConfig.operationName,
+        schema: graphqlSchema
+      }),
+    [graphqlConfig.operationName, graphqlConfig.query, graphqlConfig.variables, graphqlSchema]
+  )
 
-  if (!tab) {
+  if (!tab || !request) {
     return (
       <div className="flex h-full items-center justify-center">
         <EmptyState icon={<Webhook className="h-5 w-5" />} title="No request open" description="Select or create a request." />
@@ -93,8 +133,15 @@ export function RequestBuilder({ tabId }: { tabId: string }) {
     )
   }
 
-  const { request } = tab
   const isWebSocket = request.requestType === 'websocket'
+  const schemaStatus = graphQLSchemaStatus(request.url, graphqlConfig.schema, tab.graphqlSchemaLoading)
+  const subTabs = isGraphQL ? GRAPHQL_TABS : HTTP_TABS
+  const requestView =
+    isGraphQL && (tab.requestView === 'params' || tab.requestView === 'body')
+      ? 'query'
+      : !isGraphQL && (tab.requestView === 'query' || tab.requestView === 'variables')
+        ? 'params'
+        : tab.requestView
   const collection = tab.collectionId ? collections.find((c) => c.id === tab.collectionId) : undefined
   const inherit =
     collection != null
@@ -124,15 +171,15 @@ export function RequestBuilder({ tabId }: { tabId: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <Tabs
-        value={tab.requestView}
+        value={requestView}
         onValueChange={(v) => setRequestView(tabId, v as RequestTab)}
         className="flex min-h-0 flex-1 flex-col"
       >
         <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-1">
           <div className="flex min-w-0 flex-1 items-center overflow-x-auto">
-            {SUB_TABS.map((st) => {
+            {subTabs.map((st) => {
               const badge = tabBadge(request, st.id, collection)
-              const active = tab.requestView === st.id
+              const active = requestView === st.id
               return (
                 <button
                   key={st.id}
@@ -166,6 +213,32 @@ export function RequestBuilder({ tabId }: { tabId: string }) {
         </div>
 
         <div className="relative min-h-0 flex-1 overflow-hidden">
+          {isGraphQL && (
+            <>
+              <TabsContent value="query" className="absolute inset-0 mt-0 flex flex-col overflow-hidden data-[state=inactive]:hidden">
+                <GraphQLQueryEditor
+                  query={graphqlConfig.query}
+                  operationName={graphqlConfig.operationName}
+                  inspection={graphqlInspection}
+                  schema={graphqlSchema}
+                  schemaStatus={schemaStatus}
+                  schemaDetail={graphqlConfig.schema?.error}
+                  schemaLoading={tab.graphqlSchemaLoading}
+                  onQuery={(query) => updateDraft(tabId, { graphql: { ...graphqlConfig, query } })}
+                  onOperationName={(operationName) => updateDraft(tabId, { graphql: { ...graphqlConfig, operationName } })}
+                  onFormat={() => formatGraphQLQuery(tabId)}
+                  onFetchSchema={() => void fetchGraphQLSchema(tabId)}
+                />
+              </TabsContent>
+              <TabsContent value="variables" className="absolute inset-0 mt-0 flex flex-col overflow-hidden data-[state=inactive]:hidden">
+                <GraphQLVariablesEditor
+                  value={graphqlConfig.variables}
+                  inspection={graphqlInspection}
+                  onChange={(variables) => updateDraft(tabId, { graphql: { ...graphqlConfig, variables } })}
+                />
+              </TabsContent>
+            </>
+          )}
           <TabsContent value="params" className="absolute inset-0 mt-0 overflow-y-auto data-[state=inactive]:hidden">
             <ParamsTab
               params={request.queryParams}

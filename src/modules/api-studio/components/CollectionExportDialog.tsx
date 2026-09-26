@@ -6,7 +6,6 @@ import { Switch } from '@/shared/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/tabs'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/shared/components/ui/dialog'
 import { cn } from '@/shared/lib/utils'
-import { useProjectStore } from '@/shared/stores/project.store'
 import { exportToPostmanCollection } from '../services/postman'
 import { exportToOpenApi } from '../services/openapi'
 import {
@@ -23,6 +22,9 @@ import {
 } from '../services/collectionFile'
 import { generateSnippet } from '../services/codeGenerator'
 import { downloadBlob } from '../services/download'
+import { PRODUCT_NAME } from '@shared/constants/product'
+import { redactCollection } from '@shared/lib/redact-secrets'
+import { stripFileBytes } from '@shared/lib/workspace-document'
 import type { ApiCollection } from '../types/api.types'
 
 interface CollectionExportDialogProps {
@@ -32,19 +34,23 @@ interface CollectionExportDialogProps {
 }
 
 type ApiFormat = 'postman' | 'openapi' | 'native' | 'curl'
-type DocDestination = 'project' | 'markdown' | 'html'
+type DocDestination = 'markdown' | 'html'
 
 const API_FORMATS: { id: ApiFormat; label: string; hint: string }[] = [
   { id: 'postman', label: 'Postman v2.1', hint: 'Import into Postman / Insomnia' },
   { id: 'openapi', label: 'OpenAPI 3.1', hint: 'Swagger / codegen / gateways' },
-  { id: 'native', label: 'API Studio JSON', hint: 'Lossless backup of this collection' },
+  { id: 'native', label: `${PRODUCT_NAME} JSON`, hint: 'Backup of this collection' },
   { id: 'curl', label: 'cURL scripts', hint: 'Shell script with every request' }
 ]
+
+function collectionForExport(collection: ApiCollection, redactSecrets: boolean): ApiCollection {
+  return redactSecrets ? redactCollection(collection) : stripFileBytes(collection)
+}
 
 function buildCurlBundle(collection: ApiCollection): string {
   const parts = [
     `#!/usr/bin/env bash`,
-    `# ${collection.name} — exported from API Studio`,
+    `# ${collection.name} — exported from ${PRODUCT_NAME}`,
     `# ${new Date().toISOString()}`,
     ''
   ]
@@ -68,11 +74,9 @@ function buildCurlBundle(collection: ApiCollection): string {
 }
 
 export function CollectionExportDialog({ open, onOpenChange, collection }: CollectionExportDialogProps) {
-  const { projects, currentProject, loadProjects } = useProjectStore()
   const [tab, setTab] = useState<'document' | 'apis'>('document')
   const [apiFormat, setApiFormat] = useState<ApiFormat>('postman')
-  const [docDestination, setDocDestination] = useState<DocDestination>('project')
-  const [projectId, setProjectId] = useState('')
+  const [docDestination, setDocDestination] = useState<DocDestination>('markdown')
   const [useAi, setUseAi] = useState(true)
   const [redactSecrets, setRedactSecrets] = useState(true)
   const [includeScripts, setIncludeScripts] = useState(true)
@@ -89,38 +93,32 @@ export function CollectionExportDialog({ open, onOpenChange, collection }: Colle
     if (!open) return
     setTab('document')
     setApiFormat('postman')
-    setDocDestination('project')
+    setDocDestination('markdown')
     setUseAi(true)
     setRedactSecrets(true)
     setIncludeScripts(true)
     setIncludeCodeExamples(false)
     setBusy(false)
-    void loadProjects()
-  }, [open, loadProjects])
-
-  useEffect(() => {
-    if (!open) return
-    const list = projects.length > 0 ? projects : currentProject ? [currentProject] : []
-    if (!projectId && list.length > 0) setProjectId(list[0].id)
-  }, [open, projects, currentProject, projectId])
+  }, [open])
 
   useEffect(() => {
     if (!open || !collection) {
       setPreview('')
       return
     }
+    const exported = collectionForExport(collection, redactSecrets)
     if (tab === 'document') {
       setPreview(buildCollectionMarkdown(collection, docOptions).slice(0, 4000))
     } else if (apiFormat === 'postman') {
-      setPreview(exportToPostmanCollection(collection).slice(0, 4000))
+      setPreview(exportToPostmanCollection(exported).slice(0, 4000))
     } else if (apiFormat === 'openapi') {
-      setPreview(exportToOpenApi(collection).slice(0, 4000))
+      setPreview(exportToOpenApi(exported).slice(0, 4000))
     } else if (apiFormat === 'native') {
-      setPreview(JSON.stringify(collection, null, 2).slice(0, 4000))
+      setPreview(JSON.stringify(exported, null, 2).slice(0, 4000))
     } else {
-      setPreview(buildCurlBundle(collection).slice(0, 4000))
+      setPreview(buildCurlBundle(exported).slice(0, 4000))
     }
-  }, [open, collection, tab, apiFormat, docOptions])
+  }, [open, collection, tab, apiFormat, docOptions, redactSecrets])
 
   async function saveFile(format: CollectionExportFormat, content: string, label: string) {
     if (!collection) return
@@ -150,7 +148,7 @@ export function CollectionExportDialog({ open, onOpenChange, collection }: Colle
       collectionName: collection.name,
       collectionSummary: buildCollectionAiSummary(collection),
       baseMarkdown: base,
-      projectId: projectId || null
+      projectId: null
     })
     if (!res.success || !res.data?.trim()) {
       toast.message(res.error ? `AI skipped: ${res.error}` : 'AI returned empty — using structured document')
@@ -177,31 +175,6 @@ export function CollectionExportDialog({ open, onOpenChange, collection }: Colle
           : `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${collection.name}</title></head><body>${buildCollectionHtml(collection, docOptions)}</body></html>`
         await saveFile('html', html, 'HTML document')
         onOpenChange(false)
-        return
-      }
-
-      // Project document (ChatGPT style api_spec)
-      if (!projectId) {
-        toast.error('Select a project to create the document')
-        return
-      }
-      const htmlContent = useAi
-        ? markdownToSimpleHtml(markdown)
-        : buildCollectionHtml(collection, docOptions)
-
-      const res = await window.electronAPI.documents.create({
-        projectId,
-        title: `${collection.name} — API Spec`,
-        type: 'api_spec',
-        style: 'chatgpt',
-        content: markdown,
-        htmlContent
-      })
-      if (res.success && res.data) {
-        toast.success(`Document created in project`)
-        onOpenChange(false)
-      } else {
-        toast.error(res.error ?? 'Failed to create document')
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Export failed')
@@ -214,14 +187,15 @@ export function CollectionExportDialog({ open, onOpenChange, collection }: Colle
     if (!collection) return
     setBusy(true)
     try {
+      const exported = collectionForExport(collection, redactSecrets)
       if (apiFormat === 'postman') {
-        await saveFile('postman', exportToPostmanCollection(collection), 'Postman collection')
+        await saveFile('postman', exportToPostmanCollection(exported), 'Postman collection')
       } else if (apiFormat === 'openapi') {
-        await saveFile('openapi', exportToOpenApi(collection), 'OpenAPI spec')
+        await saveFile('openapi', exportToOpenApi(exported), 'OpenAPI spec')
       } else if (apiFormat === 'native') {
-        await saveFile('native', JSON.stringify(collection, null, 2), 'API Studio collection')
+        await saveFile('native', JSON.stringify(exported, null, 2), `${PRODUCT_NAME} collection`)
       } else {
-        await saveFile('curl', buildCurlBundle(collection), 'cURL scripts')
+        await saveFile('curl', buildCurlBundle(exported), 'cURL scripts')
       }
       onOpenChange(false)
     } catch (e) {
@@ -231,7 +205,6 @@ export function CollectionExportDialog({ open, onOpenChange, collection }: Colle
     }
   }
 
-  const projectOptions = projects.length > 0 ? projects : currentProject ? [currentProject] : []
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -273,7 +246,6 @@ export function CollectionExportDialog({ open, onOpenChange, collection }: Colle
                 <div className="grid gap-2 sm:grid-cols-3">
                   {(
                     [
-                      { id: 'project' as const, label: 'Project document', hint: 'ChatGPT-style api_spec' },
                       { id: 'markdown' as const, label: 'Markdown file', hint: '.md download' },
                       { id: 'html' as const, label: 'HTML file', hint: '.html download' }
                     ] as const
@@ -295,26 +267,6 @@ export function CollectionExportDialog({ open, onOpenChange, collection }: Colle
                   ))}
                 </div>
 
-                {docDestination === 'project' && (
-                  <label className="block space-y-1.5">
-                    <span className="text-xs font-medium">Project</span>
-                    <select
-                      className="flex h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
-                      value={projectId}
-                      onChange={(e) => setProjectId(e.target.value)}
-                    >
-                      {projectOptions.length === 0 ? (
-                        <option value="">No projects available</option>
-                      ) : (
-                        projectOptions.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </label>
-                )}
 
                 <div className="space-y-3 rounded-md border border-border/60 p-3">
                   <OptionRow
@@ -364,9 +316,20 @@ export function CollectionExportDialog({ open, onOpenChange, collection }: Colle
                     </button>
                   ))}
                 </div>
+                <div className="rounded-md border border-border/60 p-3">
+                  <OptionRow
+                    label="Redact secrets"
+                    hint={
+                      apiFormat === 'native'
+                        ? 'Turn off to keep credentials in this backup. File contents are never included.'
+                        : 'Mask tokens, passwords, and API keys. File contents are never included.'
+                    }
+                    checked={redactSecrets}
+                    onCheckedChange={setRedactSecrets}
+                  />
+                </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Postman export now includes auth (incl. OAuth2), pre-request scripts, and tests.
-                  OpenAPI skips WebSocket requests.
+                  Postman export includes auth, pre-request scripts, and tests. OpenAPI skips WebSocket requests.
                 </p>
               </TabsContent>
             </Tabs>
@@ -390,7 +353,7 @@ export function CollectionExportDialog({ open, onOpenChange, collection }: Colle
             </Button>
             <Button
               size="sm"
-              disabled={busy || !collection || (tab === 'document' && docDestination === 'project' && !projectId)}
+              disabled={busy || !collection}
               onClick={() => void (tab === 'document' ? handleExportDocument() : handleExportApis())}
             >
               {busy ? (
@@ -401,7 +364,7 @@ export function CollectionExportDialog({ open, onOpenChange, collection }: Colle
               ) : tab === 'document' ? (
                 <>
                   {useAi ? <Sparkles className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
-                  {docDestination === 'project' ? 'Create document' : 'Download'}
+                  Download
                 </>
               ) : (
                 <>

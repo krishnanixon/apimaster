@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { toast } from 'sonner'
-import { useParams } from 'react-router-dom'
 import { useApiStudioStore } from '../stores/apiStudioStore'
 import { applyGeneratedRequest } from '../services/aiApply'
 import { createEmptyKeyValue } from '../services/requestBuilder'
@@ -17,7 +16,7 @@ export function useApiStudioAi(tabId: string) {
   const environments = useApiStudioStore((s) => s.environments)
   const activeEnvironmentId = useApiStudioStore((s) => s.activeEnvironmentId)
   const updateEnvironmentVariables = useApiStudioStore((s) => s.updateEnvironmentVariables)
-  const { projectId } = useParams<{ projectId: string }>()
+  const projectId: string | null = null
   const [busy, setBusy] = useState(false)
 
   const env = environments.find((e) => e.id === activeEnvironmentId) ?? null

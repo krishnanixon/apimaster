@@ -17,6 +17,6 @@ export const openRouterProvider = new OpenAICompatibleProvider({
   defaultModel: DEFAULT_OPENROUTER_MODEL,
   headers: {
     'HTTP-Referer': 'https://ai-workbench-studio.local',
-    'X-Title': 'Tessarok'
+    'X-Title': 'APIMaster'
   }
 })

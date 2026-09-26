@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@shared/constants/product'
 import type { ApiCollection, ApiRequest, HttpMethod } from '../types/api.types'
 import { applyParentInheritance } from './inheritance'
 
@@ -68,7 +69,36 @@ function operationFromRequest(request: ApiRequest, collection: ApiCollection, fo
   ]
 
   let requestBody: Record<string, unknown> | undefined
-  if (request.body.type !== 'none' && request.method !== 'GET' && request.method !== 'HEAD') {
+  if (request.requestType === 'graphql') {
+    let variables: unknown = {}
+    try {
+      variables = JSON.parse(request.graphql?.variables?.trim() || '{}')
+    } catch {
+      variables = request.graphql?.variables ?? ''
+    }
+    requestBody = {
+      required: true,
+      description: 'GraphQL request',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              query: { type: 'string' },
+              variables: { type: 'object' },
+              operationName: { type: 'string' }
+            },
+            required: ['query']
+          },
+          example: {
+            query: request.graphql?.query ?? '',
+            variables,
+            ...(request.graphql?.operationName ? { operationName: request.graphql.operationName } : {})
+          }
+        }
+      }
+    }
+  } else if (request.body.type !== 'none' && request.method !== 'GET' && request.method !== 'HEAD') {
     if (request.body.type === 'json') {
       let example: unknown = request.body.content
       try {
@@ -127,11 +157,16 @@ function operationFromRequest(request: ApiRequest, collection: ApiCollection, fo
 
   return {
     path,
-    method: toOpenApiMethod(request.method),
+    method: request.requestType === 'graphql' ? 'post' : toOpenApiMethod(request.method),
     operation: {
       operationId: request.id.replace(/[^a-zA-Z0-9_-]/g, '_'),
       summary: request.name,
-      description: folderName ? `Folder: ${folderName}` : undefined,
+      description:
+        request.requestType === 'graphql'
+          ? [folderName ? `Folder: ${folderName}` : '', 'GraphQL operation'].filter(Boolean).join(' · ')
+          : folderName
+            ? `Folder: ${folderName}`
+            : undefined,
       tags: folderName ? [folderName] : ['Root'],
       parameters: parameters.length ? parameters : undefined,
       requestBody,
@@ -188,7 +223,7 @@ export function exportToOpenApi(collection: ApiCollection): string {
     openapi: '3.1.0',
     info: {
       title: collection.name,
-      description: collection.description || `Exported from API Studio on ${new Date().toISOString()}`,
+      description: collection.description || `Exported from ${PRODUCT_NAME} on ${new Date().toISOString()}`,
       version: '1.0.0'
     },
     servers: [{ url: inferServerUrl(collection) }],

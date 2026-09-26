@@ -6,6 +6,7 @@ import {
   FolderPlus,
   Library,
   MoreVertical,
+  Braces,
   Plus,
   Search,
   Shield,
@@ -15,9 +16,11 @@ import {
   Pencil,
   Copy,
   Play,
-  Brain
+  Server
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
+import { useMockServerStore } from '@/modules/mock-server/stores/mockServerStore'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
 import { ScrollArea } from '@/shared/components/ui/scroll-area'
@@ -44,10 +47,9 @@ import { ConfirmDialog } from './ConfirmDialog'
 import { ImportCollectionDialog } from './ImportCollectionDialog'
 import { CollectionRunnerDialog } from './CollectionRunnerDialog'
 import { CollectionExportDialog } from './CollectionExportDialog'
-import { ImportKnowledgeDialog } from './ImportKnowledgeDialog'
 import { ParentSettingsDialog, type ParentSettingsTarget } from './ParentSettingsDialog'
-import { METHOD_COLORS } from '../types/api.types'
-import type { ApiCollection, ApiFolder, ApiRequest, HttpMethod } from '../types/api.types'
+import { METHOD_COLORS, requestProtocolLabel } from '../types/api.types'
+import type { ApiCollection, ApiFolder, ApiRequest } from '../types/api.types'
 
 const TREE_DEPTH_PX = 14
 
@@ -97,6 +99,9 @@ function targetKey(t: DropTarget): string {
 }
 
 export function CollectionSidebar() {
+  const navigate = useNavigate()
+  const importCollectionToMock = useMockServerStore((s) => s.importCollection)
+  const createMockFromRequest = useMockServerStore((s) => s.createMockFromRequest)
   const collections = useApiStudioStore((s) => s.collections)
   const search = useApiStudioStore((s) => s.collectionSearch)
   const setSearch = useApiStudioStore((s) => s.setCollectionSearch)
@@ -124,7 +129,6 @@ export function CollectionSidebar() {
   const [prompt, setPrompt] = useState<PromptAction | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DeleteAction | null>(null)
   const [importOpen, setImportOpen] = useState(false)
-  const [knowledgeOpen, setKnowledgeOpen] = useState(false)
   const [runnerTarget, setRunnerTarget] = useState<RunnerAction | null>(null)
   const [exportCollectionTarget, setExportCollectionTarget] = useState<ApiCollection | null>(null)
   const [settingsTarget, setSettingsTarget] = useState<ParentSettingsTarget | null>(null)
@@ -218,6 +222,26 @@ export function CollectionSidebar() {
     if (deleteTarget.type === 'folder') deleteFolder(deleteTarget.collectionId, deleteTarget.id)
     if (deleteTarget.type === 'request') deleteRequest(deleteTarget.collectionId, deleteTarget.id)
     setDeleteTarget(null)
+  }
+
+  async function handleCreateMockServer(collection: ApiCollection) {
+    const server = await importCollectionToMock(collection, true)
+    if (server) {
+      toast.success(`Mock server "${server.name}" created`)
+      navigate('/mock-servers', { state: { selectServerId: server.id } })
+    } else {
+      toast.error('Could not create mock server from collection')
+    }
+  }
+
+  async function handleCreateMockFromRequest(collectionId: string, request: ApiRequest) {
+    const server = await createMockFromRequest(collectionId, request)
+    if (server) {
+      toast.success('Mock route added')
+      navigate('/mock-servers', { state: { selectServerId: server.id } })
+    } else {
+      toast.error('Could not create mock route')
+    }
   }
 
   async function handleImportClick() {
@@ -370,9 +394,6 @@ export function CollectionSidebar() {
         <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Import collection or cURL" onClick={() => void handleImportClick()}>
           <Upload className="h-3.5 w-3.5" />
         </Button>
-        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Import from knowledge" onClick={() => setKnowledgeOpen(true)}>
-          <Brain className="h-3.5 w-3.5" />
-        </Button>
       </div>
 
       <button
@@ -417,10 +438,16 @@ export function CollectionSidebar() {
                         items={[
                           { icon: <Play className="h-3 w-3" />, label: 'Run collection', onSelect: () => setRunnerTarget({ collectionId: collection.id, collectionName: collection.name }) },
                           { icon: <Plus className="h-3 w-3" />, label: 'New Request', onSelect: () => createRequest(collection.id) },
+                          { icon: <Braces className="h-3 w-3" />, label: 'New GraphQL request', onSelect: () => createRequest(collection.id, null, 'graphql') },
                           { icon: <FolderPlus className="h-3 w-3" />, label: 'New Folder', onSelect: () => setPrompt({ type: 'new-folder', collectionId: collection.id }) },
                           { icon: <Shield className="h-3 w-3" />, label: 'Authorization', onSelect: () => setSettingsTarget({ kind: 'collection', collectionId: collection.id }) },
                           { icon: <Pencil className="h-3 w-3" />, label: 'Rename', onSelect: () => setPrompt({ type: 'rename-collection', collectionId: collection.id, name: collection.name }) },
                           { icon: <Download className="h-3 w-3" />, label: 'Export…', onSelect: () => setExportCollectionTarget(collection) },
+                          {
+                            icon: <Server className="h-3 w-3" />,
+                            label: 'Create Mock Server',
+                            onSelect: () => void handleCreateMockServer(collection)
+                          },
                           { icon: <Trash2 className="h-3 w-3" />, label: 'Delete', destructive: true, onSelect: () => setDeleteTarget({ type: 'collection', id: collection.id, name: collection.name }) }
                         ]}
                       />
@@ -432,6 +459,9 @@ export function CollectionSidebar() {
                         </ContextMenuItem>
                         <ContextMenuItem onSelect={() => createRequest(collection.id)}>
                           <Plus className="h-3.5 w-3.5" /> New Request
+                        </ContextMenuItem>
+                        <ContextMenuItem onSelect={() => createRequest(collection.id, null, 'graphql')}>
+                          <Braces className="h-3.5 w-3.5" /> New GraphQL request
                         </ContextMenuItem>
                         <ContextMenuItem onSelect={() => setPrompt({ type: 'new-folder', collectionId: collection.id })}>
                           <FolderPlus className="h-3.5 w-3.5" /> New Folder
@@ -445,6 +475,9 @@ export function CollectionSidebar() {
                         </ContextMenuItem>
                         <ContextMenuItem onSelect={() => setExportCollectionTarget(collection)}>
                           <Download className="h-3.5 w-3.5" /> Export…
+                        </ContextMenuItem>
+                        <ContextMenuItem onSelect={() => void handleCreateMockServer(collection)}>
+                          <Server className="h-3.5 w-3.5" /> Create Mock Server
                         </ContextMenuItem>
                         <ContextMenuSeparator />
                         <ContextMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleteTarget({ type: 'collection', id: collection.id, name: collection.name })}>
@@ -467,7 +500,7 @@ export function CollectionSidebar() {
                       <Library className="h-3.5 w-3.5 shrink-0 text-primary" />
                       <span className="min-w-0 truncate text-xs font-medium">{collection.name}</span>
                       {collectionHasOwnSettings(collection) && (
-                        <Shield className="h-3 w-3 shrink-0 text-primary" title="Has collection authorization" />
+                        <Shield className="h-3 w-3 shrink-0 text-primary" aria-label="Has collection authorization" />
                       )}
                       <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">({collection.requests.length})</span>
                     </button>
@@ -497,6 +530,7 @@ export function CollectionSidebar() {
                           onSettings={setSettingsTarget}
                           onCreateRequest={createRequest}
                           onDuplicateRequest={duplicateRequest}
+                          onCreateMock={(request) => void handleCreateMockFromRequest(collection.id, request)}
                         />
                       ))}
 
@@ -543,6 +577,7 @@ export function CollectionSidebar() {
                                 name: request.name
                               })
                             }
+                            onCreateMock={() => void handleCreateMockFromRequest(collection.id, request)}
                           />
                         )
                       })}
@@ -591,7 +626,6 @@ export function CollectionSidebar() {
       />
 
       <ImportCollectionDialog open={importOpen} onOpenChange={setImportOpen} onImported={handleImported} />
-      <ImportKnowledgeDialog open={knowledgeOpen} onOpenChange={setKnowledgeOpen} />
       <CollectionExportDialog
         open={exportCollectionTarget !== null}
         onOpenChange={(open) => !open && setExportCollectionTarget(null)}
@@ -634,7 +668,8 @@ function FolderNode({
   onRunner,
   onSettings,
   onCreateRequest,
-  onDuplicateRequest
+  onDuplicateRequest,
+  onCreateMock
 }: {
   collection: ApiCollection
   folder: ApiFolder
@@ -653,8 +688,9 @@ function FolderNode({
   onDelete: (action: DeleteAction) => void
   onRunner: (action: RunnerAction) => void
   onSettings: (target: ParentSettingsTarget) => void
-  onCreateRequest: (collectionId: string, folderId?: string | null) => void
+  onCreateRequest: (collectionId: string, folderId?: string | null, requestType?: ApiRequest['requestType']) => void
   onDuplicateRequest: (collectionId: string, requestId: string) => void
+  onCreateMock: (request: ApiRequest) => void
 }) {
   const folderExpanded = expandedFolders.has(folder.id)
   const childFolders = getChildFolders(collection.folders, folder.id)
@@ -693,6 +729,14 @@ function FolderNode({
                 label: 'New Request',
                 onSelect: () => {
                   onCreateRequest(collection.id, folder.id)
+                  onExpandFolder(folder.id)
+                }
+              },
+              {
+                icon: <Braces className="h-3 w-3" />,
+                label: 'New GraphQL request',
+                onSelect: () => {
+                  onCreateRequest(collection.id, folder.id, 'graphql')
                   onExpandFolder(folder.id)
                 }
               },
@@ -814,7 +858,7 @@ function FolderNode({
           <FolderIcon className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
           <span className="min-w-0 truncate text-xs">{folder.name}</span>
           {folderHasOwnSettings(folder) && (
-            <Shield className="h-3 w-3 shrink-0 text-primary" title="Has folder authorization" />
+            <Shield className="h-3 w-3 shrink-0 text-primary" aria-label="Has folder authorization" />
           )}
           {childCount > 0 && (
             <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">({childCount})</span>
@@ -846,6 +890,7 @@ function FolderNode({
               onSettings={onSettings}
               onCreateRequest={onCreateRequest}
               onDuplicateRequest={onDuplicateRequest}
+              onCreateMock={onCreateMock}
             />
           ))}
           {folderRequests.map((request) => {
@@ -891,6 +936,7 @@ function FolderNode({
                     name: request.name
                   })
                 }
+                onCreateMock={() => onCreateMock(request)}
               />
             )
           })}
@@ -971,7 +1017,8 @@ function RequestRow({
   onOpen,
   onRename,
   onDuplicate,
-  onDelete
+  onDelete,
+  onCreateMock
 }: {
   depth: number
   request: ApiRequest
@@ -985,8 +1032,9 @@ function RequestRow({
   onRename: () => void
   onDuplicate: () => void
   onDelete: () => void
+  onCreateMock?: () => void
 }) {
-  const method = request.method as HttpMethod
+  const method = requestProtocolLabel(request)
   return (
     <TreeRow
       depth={depth}
@@ -1002,6 +1050,9 @@ function RequestRow({
           items={[
             { icon: <Pencil className="h-3 w-3" />, label: 'Rename', onSelect: onRename },
             { icon: <Copy className="h-3 w-3" />, label: 'Duplicate', onSelect: onDuplicate },
+            ...(onCreateMock
+              ? [{ icon: <Server className="h-3 w-3" />, label: 'Create Mock', onSelect: onCreateMock }]
+              : []),
             { icon: <Trash2 className="h-3 w-3" />, label: 'Delete', destructive: true, onSelect: onDelete }
           ]}
         />
@@ -1009,6 +1060,11 @@ function RequestRow({
       contextMenu={
         <ContextMenuContent className="min-w-[140px]">
           <ContextMenuItem onSelect={onOpen}>Open</ContextMenuItem>
+          {onCreateMock && (
+            <ContextMenuItem onSelect={onCreateMock}>
+              <Server className="h-3.5 w-3.5" /> Create Mock
+            </ContextMenuItem>
+          )}
           <ContextMenuSeparator />
           <ContextMenuItem onSelect={onRename}>
             <Pencil className="h-3.5 w-3.5" /> Rename

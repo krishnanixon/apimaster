@@ -11,6 +11,7 @@ import type {
 import { isSignedAuthType } from '../types/api.types'
 import { applyAuth, enabledEntries } from './authHandler'
 import { applyParentInheritance, createInheritAuth } from './inheritance'
+import { toGraphQLHttpRequest } from './graphql/prepare'
 
 export function createEmptyKeyValue(): KeyValuePair {
   return { id: uuidv4(), key: '', value: '', enabled: true }
@@ -87,19 +88,20 @@ export interface ResolveOptions {
  */
 export function resolveRequest(request: ApiRequest, options?: ResolveOptions): ResolvedHttpRequest {
   const effective = applyParentInheritance(request, options?.collection)
-  const baseHeaders = enabledEntries(effective.headers)
-  const baseParams = enabledEntries(effective.queryParams)
-  const { headers, params } = applyAuth(effective.auth, baseHeaders, baseParams)
+  const wire = toGraphQLHttpRequest(effective)
+  const baseHeaders = enabledEntries(wire.headers)
+  const baseParams = enabledEntries(wire.queryParams)
+  const { headers, params } = applyAuth(wire.auth, baseHeaders, baseParams)
 
   return {
     clientRequestId: uuidv4(),
-    method: request.method as HttpMethod,
-    url: applyPathParams(effective.url.split('?')[0], effective.pathParams ?? []),
+    method: wire.method as HttpMethod,
+    url: applyPathParams(wire.url.split('?')[0], wire.pathParams ?? []),
     headers,
     params,
-    body: effective.method === 'GET' || effective.method === 'HEAD' ? createDefaultBody() : effective.body,
-    timeoutMs: options?.timeoutMs ?? effective.timeoutMs,
-    auth: isSignedAuthType(effective.auth.type) ? effective.auth : undefined
+    body: wire.method === 'GET' || wire.method === 'HEAD' ? createDefaultBody() : wire.body,
+    timeoutMs: options?.timeoutMs ?? wire.timeoutMs,
+    auth: isSignedAuthType(wire.auth.type) ? wire.auth : undefined
   }
 }
 
