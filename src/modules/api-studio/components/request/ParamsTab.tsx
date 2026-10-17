@@ -6,9 +6,11 @@ interface ParamsTabProps {
   pathParams: KeyValuePair[]
   onChange: (params: KeyValuePair[]) => void
   onPathParamsChange: (params: KeyValuePair[]) => void
+  /** Show the secret lock (the request is in a folder-linked collection). */
+  secretToggle?: boolean
 }
 
-export function ParamsTab({ params, pathParams, onChange, onPathParamsChange }: ParamsTabProps) {
+export function ParamsTab({ params, pathParams, onChange, onPathParamsChange, secretToggle = false }: ParamsTabProps) {
   return (
     <div className="space-y-4 p-3">
       {pathParams.length > 0 && (
@@ -35,7 +37,13 @@ export function ParamsTab({ params, pathParams, onChange, onPathParamsChange }: 
           <h3 className="text-xs font-medium text-foreground">Query params</h3>
           <p className="text-[11px] text-muted-foreground">Appended to the URL when the request is sent.</p>
         </div>
-        <KeyValueTable pairs={params} onChange={onChange} keyPlaceholder="Param" valuePlaceholder="Value" />
+        <KeyValueTable
+          pairs={params}
+          onChange={onChange}
+          keyPlaceholder="Param"
+          valuePlaceholder="Value"
+          secretToggle={secretToggle}
+        />
       </section>
     </div>
   )

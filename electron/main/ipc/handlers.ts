@@ -20,6 +20,7 @@ import { registerMockServerHandlers } from './mock-server.handlers'
 import { registerAiEngineerHandlers } from './ai-engineer.handlers'
 import { registerMcpHandlers } from './mcp.handlers'
 import { registerCodeScannerHandlers } from './code-scanner.handlers'
+import { registerCollectionFolderHandlers } from './collection-folder.handlers'
 
 function success<T>(data?: T): IpcResult<T> {
   return { success: true, data }
@@ -311,5 +312,6 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
   registerMockServerHandlers()
   registerAiEngineerHandlers()
   registerCodeScannerHandlers(getMainWindow)
+  registerCollectionFolderHandlers(getMainWindow)
   registerMcpHandlers(getMainWindow)
 }

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Globe, Pencil, Plus, Trash2, Copy } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { FolderGit2, Globe, Pencil, Plus, Trash2, Copy } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/components/ui/dialog'
 import { Button } from '@/shared/components/ui/button'
 import { ScrollArea } from '@/shared/components/ui/scroll-area'
@@ -25,6 +25,9 @@ export function EnvironmentManagerDialog({ open, onOpenChange, initialSelectedId
   const updateEnvironmentVariables = useApiStudioStore((s) => s.updateEnvironmentVariables)
   const activeEnvironmentId = useApiStudioStore((s) => s.activeEnvironmentId)
   const setActiveEnvironment = useApiStudioStore((s) => s.setActiveEnvironment)
+  const setEnvironmentCollection = useApiStudioStore((s) => s.setEnvironmentCollection)
+  const collections = useApiStudioStore((s) => s.collections)
+  const folderCollections = useMemo(() => collections.filter((c) => c.folder?.path), [collections])
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null)
@@ -37,6 +40,7 @@ export function EnvironmentManagerDialog({ open, onOpenChange, initialSelectedId
   }, [open])
 
   const selected = environments.find((e) => e.id === selectedId) ?? null
+  const selectedHome = selected?.collectionId ? folderCollections.find((c) => c.id === selected.collectionId) : undefined
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -69,6 +73,9 @@ export function EnvironmentManagerDialog({ open, onOpenChange, initialSelectedId
                       <button onClick={() => setSelectedId(env.id)} className="flex flex-1 items-center gap-1.5 overflow-hidden text-left">
                         {activeEnvironmentId === env.id && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" title="Active" />}
                         <span className="truncate">{env.name}</span>
+                        {env.collectionId && (
+                          <FolderGit2 className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Saved in a collection folder" />
+                        )}
                       </button>
                       <button
                         onClick={() => setRenameTarget({ id: env.id, name: env.name })}
@@ -101,8 +108,24 @@ export function EnvironmentManagerDialog({ open, onOpenChange, initialSelectedId
           <div className="flex min-h-0 flex-col">
             {selected ? (
               <>
-                <div className="mb-2 flex shrink-0 items-center justify-between">
-                  <span className="text-sm font-medium">{selected.name}</span>
+                <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
+                  <span className="truncate text-sm font-medium">{selected.name}</span>
+                  {(folderCollections.length > 0 || selected.collectionId) && (
+                    <select
+                      className="ml-auto h-8 max-w-[220px] rounded-md border border-border bg-background px-2 text-xs"
+                      value={selected.collectionId ?? ''}
+                      onChange={(e) => setEnvironmentCollection(selected.id, e.target.value || null)}
+                      title="Where this environment is stored"
+                    >
+                      <option value="">This machine only</option>
+                      {folderCollections.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          Folder of “{c.name}”
+                        </option>
+                      ))}
+                      {selected.collectionId && !selectedHome && <option value={selected.collectionId}>Unlinked collection</option>}
+                    </select>
+                  )}
                   <Button
                     size="sm"
                     variant={activeEnvironmentId === selected.id ? 'secondary' : 'outline'}
@@ -117,9 +140,13 @@ export function EnvironmentManagerDialog({ open, onOpenChange, initialSelectedId
                     onChange={(variables) => updateEnvironmentVariables(selected.id, variables)}
                     keyPlaceholder="Variable"
                     valuePlaceholder="Value"
+                    secretToggle
                   />
                   <p className="mt-2 text-[11px] text-muted-foreground">
                     Reference these anywhere in a request as <code className="rounded bg-muted px-1 py-0.5">{'{{variableName}}'}</code>.
+                    {selectedHome
+                      ? ` Saved to ${selectedHome.folder!.path}/environments. Locked values stay on this machine; only their names are written.`
+                      : ' Locked values are never written to a collection folder.'}
                   </p>
                 </ScrollArea>
               </>

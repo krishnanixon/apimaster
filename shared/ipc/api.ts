@@ -17,6 +17,7 @@ import type {
 } from '../types'
 import type { BugReport, CreateBugReportInput } from '../types/diagnostics'
 import type { WorkspaceLoadResult, WorkspaceSaveResult } from '../lib/workspace-document'
+import type { CollectionFiles } from '../lib/collection-files/format'
 import type {
   ApiExecutionResult,
   ApiTestRun,
@@ -144,6 +145,27 @@ export interface ElectronAPI {
     load: () => Promise<IpcResult<WorkspaceLoadResult>>
     save: (payload: string) => Promise<IpcResult<WorkspaceSaveResult>>
     saveSync: (payload: string) => IpcResult<WorkspaceSaveResult>
+  }
+  /** Collections stored as files in a folder the user picked (docs/COLLECTION_FILES.md). */
+  collectionFolders: {
+    /**
+     * `open`: pick a collection folder. `save`: pick where to write one; returns an empty folder or a
+     * new subfolder named after the collection. `null` when cancelled.
+     */
+    pick: (input: { mode: 'open' | 'save'; collectionName?: string; collectionId?: string }) => Promise<IpcResult<string | null>>
+    read: (path: string) => Promise<IpcResult<{ files: CollectionFiles; skipped: { path: string; message: string }[] }>>
+    write: (input: {
+      path: string
+      files: CollectionFiles
+      protectedPaths?: string[]
+      createIfMissing?: CollectionFiles
+    }) => Promise<IpcResult<{ written: string[]; deleted: string[] }>>
+    watch: (path: string) => Promise<IpcResult>
+    unwatch: (path: string) => Promise<IpcResult>
+    /** Stop watching and revoke access (the files stay on disk). */
+    forget: (path: string) => Promise<IpcResult>
+    reveal: (path: string) => Promise<IpcResult>
+    onChanged: (callback: (change: { path: string; files: CollectionFiles }) => void) => () => void
   }
   bugReports: {
     create: (input: CreateBugReportInput) => Promise<IpcResult<BugReport>>

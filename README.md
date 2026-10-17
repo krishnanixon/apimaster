@@ -59,7 +59,8 @@ unidentified developer, move it to Applications and run
 - **Response inspection**: JSON tree with filter, JSONPath queries (`$..items[?(@.price < 10)]`), copy path/value, copy as JSON, find-in-body, save to file, large-response guards, and image/SVG/PDF/audio/video previews with a hex view for other binary bodies
 - **Compare**: diff status, headers, JSON (path-level), text, response time, and size against the previous run, a pinned baseline, or another tab — including what changed in the request
 - **Collections**: folders, inherited auth and settings, request history, tabs
-- **Environments**: `{{variables}}` with per-environment values
+- **Git-friendly collection folders**: keep a collection as readable YAML files (one per request) in any folder, such as your repo. Edits are saved as you work, and changes from `git pull` or an editor are picked up live. Secret values never go into the files. See [Collection files](docs/COLLECTION_FILES.md)
+- **Environments**: `{{variables}}` with per-environment values; mark a variable secret to keep its value on your machine
 - **Scripts & tests**: pre-request scripts, assertions, and a collection runner with reports
 - **Import / export**: import Postman and cURL; export Postman, OpenAPI, cURL, and Markdown/HTML API docs
 - **Mock Server**: local HTTP mock APIs from collections (`127.0.0.1` by default), parameterized routes, multiple responses per route (status, headers, body, delay) chosen by active/sequential/random mode or per request via `X-Mock-Response`, examples saved from real responses, templates, CORS, and request logs
@@ -85,7 +86,7 @@ electron/
     ai/           AI providers, routing, metrics
     ai-engineer/  API analysis, test generation, failure analysis
     code-scanner/ project scanning and AI enrichment (extractors live in shared/lib/code-scanner)
-    infra/        logger, API keys, onboarding, bug reports, JSON store
+    infra/        logger, API keys, onboarding, bug reports, JSON store, collection folders
     ipc/          IPC handlers
     mock-server/  local HTTP mock server runtime
     mcp/          local MCP server for Claude, Cursor, and other agents
@@ -96,6 +97,7 @@ src/
   features/             settings, AI settings, onboarding, diagnostics
   shared/               UI components, stores, utilities
 shared/                 cross-process types and IPC contract
+  lib/collection-files/ collection folder format: pure serialize/parse plus a Node fs adapter
 tests/                  vitest
 ```
 
@@ -127,6 +129,7 @@ npm run dist:mac # or dist:win / dist:linux — installers land in release/
 
 ## Documentation
 
+- [Collection files](docs/COLLECTION_FILES.md)
 - [AI Engineer](docs/AI_ENGINEER.md)
 - [Mock Server](docs/MOCK_SERVER.md)
 - [Changelog](CHANGELOG.md)

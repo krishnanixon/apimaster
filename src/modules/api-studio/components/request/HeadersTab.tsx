@@ -6,9 +6,11 @@ interface HeadersTabProps {
   headers: KeyValuePair[]
   onChange: (headers: KeyValuePair[]) => void
   inheritedHeaders?: InheritedHeader[]
+  /** Show the secret lock (the request is in a folder-linked collection). */
+  secretToggle?: boolean
 }
 
-export function HeadersTab({ headers, onChange, inheritedHeaders = [] }: HeadersTabProps) {
+export function HeadersTab({ headers, onChange, inheritedHeaders = [], secretToggle = false }: HeadersTabProps) {
   return (
     <div className="space-y-4 p-3">
       {inheritedHeaders.length > 0 && (
@@ -32,7 +34,13 @@ export function HeadersTab({ headers, onChange, inheritedHeaders = [] }: Headers
         {inheritedHeaders.length > 0 && (
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">This request</p>
         )}
-        <KeyValueTable pairs={headers} onChange={onChange} keyPlaceholder="Header" valuePlaceholder="Value" />
+        <KeyValueTable
+          pairs={headers}
+          onChange={onChange}
+          keyPlaceholder="Header"
+          valuePlaceholder="Value"
+          secretToggle={secretToggle}
+        />
       </div>
     </div>
   )

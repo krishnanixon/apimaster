@@ -12,6 +12,11 @@ export interface KeyValuePair {
   value: string
   enabled: boolean
   description?: string
+  /**
+   * Keep the value on this machine only. In a collection folder the key is written but the value
+   * stays in the encrypted local workspace.
+   */
+  secret?: boolean
 }
 
 export type RequestBodyType = 'none' | 'json' | 'text' | 'form-data' | 'x-www-form-urlencoded'
@@ -26,6 +31,8 @@ export interface FormDataField {
   fileName?: string
   fileBase64?: string
   fileContentType?: string
+  /** Same as `KeyValuePair.secret`: the value is never written to a collection folder. */
+  secret?: boolean
 }
 
 export interface RequestBody {
@@ -215,6 +222,8 @@ export interface ApiCollection {
   preRequestScript?: string
   /** Set when the Code Scanner generated this collection; re-scans of `rootPath` can update it. */
   source?: { kind: 'code-scanner'; rootPath: string; scannedAt: string }
+  /** Set when the collection lives as files in a folder (see docs/COLLECTION_FILES.md). */
+  folder?: { path: string }
   createdAt: string
   updatedAt: string
 }
@@ -224,6 +233,8 @@ export interface ApiEnvironment {
   id: string
   name: string
   variables: KeyValuePair[]
+  /** Set when the environment belongs to a folder-linked collection and is saved under its `environments/`. */
+  collectionId?: string
   createdAt: string
   updatedAt: string
 }
