@@ -17,10 +17,21 @@ shared/**/*.d.ts
 electron.vite.config.js
 electron.vite.config.d.ts
 
-# Environment
+# Environment and local secrets (keep .env.example if one is added)
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+*.enc
+credentials.json
+**/secrets.json
+**/*-credentials.json
+
+# Local databases (request history, tokens, workspace data)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+prisma/*.db*
 
 # IDE
 .vscode/

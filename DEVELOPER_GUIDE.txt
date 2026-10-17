@@ -1,0 +1,1087 @@
+================================================================================
+                        SHURIKLY — DEVELOPER GUIDE
+       The open-source, local-first API client that reads your code
+================================================================================
+
+Product ......... Shurikly (formerly APIMaster / API Studio)
+Owner ........... Wansify Ventures — MIT License
+Version ......... 1.0.0 (public launch 25 October 2026)
+App ID .......... com.shurikly.app
+Repository ...... https://github.com/shurikly/shurikly
+Last updated .... 17 October 2026 (branch api-studio, after commit 6f56770)
+
+This file is the in-depth reference for engineers working on the codebase: what
+the product does, how every feature is built, where the code lives, how data
+flows between processes, how things are stored, and how to build, test and
+release. User-facing docs live in docs/*.md and on the website
+(../shurikly-web/content/Shurikly-v1.0.0.md). Contribution rules live in
+CONTRIBUTING.md. Release notes live in CHANGELOG.md.
+
+--------------------------------------------------------------------------------
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+  1.  What Shurikly is
+  2.  Feature catalogue (what the product can do)
+  3.  Tech stack
+  4.  Getting the code running
+  5.  Repository layout
+  6.  Process model and the IPC contract
+  7.  The request pipeline (HTTP, GraphQL, WebSocket)
+  8.  Networking: proxy, TLS, cookie jar, redirects, errors
+  9.  Auth types and inheritance
+  10. Scripts and tests (QuickJS sandbox, pm API)
+  11. Collections, workspace persistence and collection folders
+  12. Import and export
+  13. Code Scanner
+  14. AI layer (providers, router, budget, cache)
+  15. AI Engineer
+  16. Mock Server
+  17. MCP server (agents)
+  18. Settings, profile, onboarding, diagnostics
+  19. Auto-update, signing and releases
+  20. Data storage reference
+  21. Security model
+  22. Testing
+  23. Coding conventions and how to add things
+  24. Known limitations and roadmap
+  25. Glossary
+
+
+================================================================================
+1. WHAT SHURIKLY IS
+================================================================================
+
+Shurikly is an Electron desktop app for designing, sending, testing, mocking
+and documenting HTTP APIs. Its principles:
+
+  * Local-first — no account, no cloud sync, no telemetry. Everything is JSON
+    on disk in the OS app-data folder (or YAML in a folder the user picks).
+  * Code-aware — the Code Scanner reads a project folder (backend routes and
+    frontend HTTP calls) and builds a ready-to-send collection.
+  * Bring your own AI — OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter, any
+    OpenAI-compatible endpoint, or fully local Ollama. AI is off until the user
+    adds a key, and data is sent only when the user triggers an AI action.
+  * One tool — client, tests, runner, mock server, docs export, and an MCP
+    server for agents such as Claude Code, Claude Desktop and Cursor.
+
+Main screens (renderer routes in src/app/App.tsx):
+
+  /               Requests (API Studio) — the API client itself
+  /mock-servers   Mock Servers
+  /ai-engineer    AI Engineer
+  /code-scanner   Code Scanner
+  /settings       Settings (Profile, Appearance, Network, AI, MCP, Usage, About)
+  /diagnostics    Bug reports and logs
+  /terms          Terms
+
+
+================================================================================
+2. FEATURE CATALOGUE
+================================================================================
+
+2.1 Requests
+  - Protocols: HTTP/REST (any method incl. custom), GraphQL, WebSocket.
+  - Request tabs: Params (query + path variables :id / {id}), Auth, Headers,
+    Body, Notes (Markdown), Scripts, Tests, Settings.
+  - Body types: none, JSON (CodeMirror with lint/format), text, form-data
+    (text + file fields), x-www-form-urlencoded.
+  - Per-request settings: timeout (default 30 s), SSL verification override
+    (inherit / on / off), "Don't send cookies".
+  - Query params stay in sync with the URL both ways.
+  - Code snippets: cURL, JavaScript fetch, Node.js, Python (inherited auth and
+    headers applied) — src/modules/api-studio/services/codeGenerator.ts.
+
+2.2 Authentication (11 types)
+  inherit, none, apiKey (header or query), bearer, jwt (built and signed),
+  basic, digest, oauth1, oauth2 (authorization code, client credentials,
+  password; token retrieval and reuse), aws (SigV4), hawk.
+
+2.3 GraphQL
+  - Schema introspection, schema-aware autocomplete and validation
+    (cm6-graphql + graphql-language-service), operation picker, Format query,
+    Variables JSON, Data / Errors response views, GraphQL status separate from
+    HTTP status.
+
+2.4 WebSocket
+  - Runs in the main process (`ws`) — headers, auth, query params, cookies,
+    proxy and TLS settings apply. Params / Headers / Auth / Settings next to
+    the message log. Close codes and connection errors are logged.
+
+2.5 Response inspection
+  - JSON tree with filter, copy value / path, filter-to-node; raw view with
+    find-in-body; JSONPath queries (shared/lib/json-path.ts); copy as JSON;
+    save to file; image / SVG / PDF / audio / video previews; hex view for
+    other binary bodies; large-response guards; Headers, Cookies and Tests
+    views; AI "Explain".
+  - Plain-language network errors (TLS, proxy, DNS, connection, timeout) with
+    a one-click "Don't verify SSL for this request" for certificate errors
+    (shared/lib/network/errors.ts).
+
+2.6 Compare
+  - Diff status, headers (with "ignore volatile headers"), JSON path-level
+    body diff or text diff, time, size, content type — against the previous
+    run, a pinned baseline, or another tab. Also shows what changed in the
+    request (shared/lib/response-diff.ts).
+
+2.7 Network
+  - Proxy: none, system (OS / PAC via Chromium), or custom HTTP + HTTPS
+    proxy with auth and a NO_PROXY-style bypass list.
+  - TLS: global "Verify SSL certificates", per-request override, extra CA
+    files, OS trust store, client certificates (PEM cert+key or PFX/P12)
+    matched by host pattern.
+  - Cookie jar shared by the editor, redirects, WebSockets, runner, AI
+    Engineer and MCP tools, with a cookie manager dialog.
+  - Redirects followed by Shurikly itself (max 10).
+
+2.8 Organisation
+  - Collections, nested folders, inheritance of auth / headers / pre-request
+    scripts, drag-and-drop, tabs with dirty markers, history with method
+    filter, split view.
+  - Environments with {{variables}}, one active environment, secret
+    variables (lock toggle), environment stored on "This machine only" or in
+    a collection folder.
+
+2.9 Git-friendly collection folders
+  - One YAML file per request, folder files, environments/*.yaml.
+  - Debounced atomic auto-save, live reload on external change, conflict
+    prompt, broken files skipped and never overwritten, secrets never written.
+  - Full spec: docs/COLLECTION_FILES.md.
+
+2.10 Scripts and tests
+  - Pre-request scripts and Postman-style `pm` tests in a QuickJS
+    (WebAssembly) sandbox on a worker thread; 2 s timeout, 32 MB memory cap;
+    captured console output; collection runner with delay / stop-on-failure.
+
+2.11 Import / export
+  - Import: Postman, Insomnia v4 (JSON/YAML) and v5 (YAML), Bruno folders,
+    HAR 1.2, OpenAPI 3 / Swagger 2 (JSON/YAML, $ref), cURL, Shurikly backup.
+    Format auto-detection and an import summary of skipped items.
+  - Export: Postman, OpenAPI, cURL, Markdown docs, HTML docs.
+
+2.12 Code Scanner
+  - Backends: Express, Fastify, NestJS, Next.js (app + pages router),
+    FastAPI, Flask, Django / DRF; OpenAPI / Swagger files in the repo.
+  - Frontend calls: fetch, axios, ky, ofetch, superagent, SWR, RTK Query,
+    Angular HttpClient, generated SDKs, GraphQL clients, wrapper functions
+    across files; Vue / Svelte <script> blocks.
+  - Base URL from .env files, dev-server proxies, or the listen port.
+  - Request bodies from zod, joi, yup, TypeBox, Fastify JSON Schema,
+    express-validator; auth scheme detection (Bearer, API key, Basic, Token).
+  - Frontend <-> backend linking, resource grouping, nested sub-resource
+    folders, auth folder, login token script, validation tests, review
+    findings (risks), open-in-editor, watch mode, branch compare, re-scan
+    merge, optional AI enrichment, hand-off to Mock Server / AI Engineer /
+    OpenAPI export.
+
+2.13 AI
+  - Generate a request from plain English, explain a response, write tests,
+    fix a failing request, document a collection, describe / enhance.
+  - Routing modes: cloud, local (Ollama), hybrid; automatic fallback; prompt
+    cache; usage and cost tracking; budget guard.
+
+2.14 AI Engineer
+  - Analyse a collection or OpenAPI document, generate baseline tests
+    (reachability, missing auth) plus optional AI tests, run safely
+    (GET/HEAD/OPTIONS only unless write methods are approved), keep evidence
+    for each failure, AI failure analysis. Data to AI is off by default.
+
+2.15 Mock Server
+  - Local HTTP mocks from collections, 127.0.0.1:4010 by default,
+    parameterised routes, several responses per route (active / sequential /
+    random, or chosen per call with X-Mock-Response / __response), delays,
+    templates ({{params.id}}, {{query.x}}, {{headers.x}}, {{body.x}}), CORS,
+    request log, "Save as mock example" from a real response.
+
+2.16 MCP server
+  - Streamable HTTP MCP server on 127.0.0.1:47823/mcp with a bearer token and
+    28 tools; stdio bridge for Claude Desktop; secrets redacted and source code
+    hidden unless the user opts in.
+
+2.17 Other
+  - Diagnostics centre with searchable logs, local bug reports with
+    credential redaction.
+  - Auto-update from GitHub Releases.
+  - Themes: Light / Dark / System; styles Shurikly, Minimal, Professional,
+    Midnight; accent colour; density.
+  - Local profile with an activity calendar.
+
+
+================================================================================
+3. TECH STACK
+================================================================================
+
+  Shell ............ Electron 41 (single main window, single-instance lock)
+  UI ............... React 19, TypeScript 5.9, TailwindCSS 3, Radix UI,
+                     Framer Motion, lucide-react, sonner (toasts),
+                     react-resizable-panels, react-markdown
+  Routing .......... react-router-dom 7
+  State ............ Zustand 5
+  Editors .......... CodeMirror 6 (@uiw/react-codemirror), cm6-graphql
+  Build ............ electron-vite 3 (Vite 6), electron-builder 26
+  HTTP ............. axios, form-data, http-proxy-agent, https-proxy-agent
+  Cookies .......... tough-cookie
+  WebSocket ........ ws
+  Scripts .......... quickjs-emscripten-core + @jitl/quickjs-wasmfile-release-sync
+  YAML ............. js-yaml
+  Parsing .......... typescript (compiler API, used at runtime by Code Scanner),
+                     graphql
+  Validation ....... zod 4 (MCP tool schemas), small runtime schema for IPC
+  AI ............... openai SDK + provider adapters, @modelcontextprotocol/sdk
+  Updates .......... electron-updater
+  Tests ............ Vitest 3 (node environment; happy-dom where needed)
+  Lint / format .... ESLint 9 (typescript-eslint), Prettier 3
+
+
+================================================================================
+4. GETTING THE CODE RUNNING
+================================================================================
+
+Requirements: Node.js 20+ (.nvmrc pins the CI version), npm 10+, macOS,
+Windows or Linux. No environment variables or accounts are needed.
+
+  git clone https://github.com/shurikly/shurikly.git
+  cd shurikly
+  npm install
+  npm run dev
+
+Scripts (package.json):
+
+  npm run dev          electron-vite dev — HMR for renderer, main restarts
+  npm run build        production bundles into out/
+  npm run preview      run the production bundle
+  npm run typecheck    tsc for tsconfig.node.json and tsconfig.web.json
+  npm run lint         ESLint      (lint:fix to autofix)
+  npm run format       Prettier
+  npm test             Vitest once (test:watch for watch mode)
+  npm run verify       typecheck + test + build  <-- what CI runs
+  npm run dist:mac     ad-hoc signed .dmg + .zip into release/
+  npm run build:mac    same, for x64 and arm64
+  npm run dist:win     NSIS installer (build:win forces x64)
+  npm run dist:linux   AppImage
+
+Clean slate: delete the app-data folder (see section 20). AI features need a
+key added in Settings -> AI (stored encrypted, never in the repo) or a local
+Ollama.
+
+Path aliases:
+  @/*       -> src/*            (renderer)
+  @shared/* -> shared/*         (all processes)
+  @main/*   -> electron/main/*  (main only)
+
+
+================================================================================
+5. REPOSITORY LAYOUT
+================================================================================
+
+electron/
+  main/
+    index.ts            App entry: single-instance lock, IPC registration,
+                        MCP start, AI warm-up, window, menu, updater;
+                        shuts down mock servers / MCP and flushes cookies
+                        on quit.
+    bootstrap/          paths.ts (sets userData to <appData>/shurikly),
+                        app-menu.ts (Help links to repo and issues)
+    api-studio/         http-client.service.ts (HTTP engine),
+                        request-auth.ts, oauth2.service.ts,
+                        websocket.service.ts, script-sandbox.ts,
+                        script-guest.ts (pm API source run inside QuickJS),
+                        script-runner.service.ts, api-studio-ai.service.ts,
+                        bruno-folder.ts (reads Bruno folders from disk)
+    ai/                 providers/ (openai, anthropic, gemini, ollama,
+                        openai-compatible instances, registry), router/,
+                        config/, cache/prompt-cache.ts, metrics/,
+                        credit-guard.ts (budget + token reservations)
+    ai-engineer/        analysis, test generation, failure analysis,
+                        provider adapter, repository (ai-engineer.json)
+    code-scanner/       code-scanner.service.ts (approved roots, walking,
+                        watch), AI enrichment service, open-in-editor.ts,
+                        git ref scanning, project-walker.ts (file walk,
+                        .gitignore handling via `ignore`)
+    infra/              logger, api-key.service (safeStorage), onboarding,
+                        bug reports, json-store (data/*.json helpers),
+                        workspace-store (encrypted workspace + .bak),
+                        collection-folders.service (approved folders, fs,
+                        watch), updater.service, usage tracker
+    ipc/                handlers.ts (registers everything) plus one file per
+                        domain; runtime-schema.ts (argument validation)
+    mcp/                mcp-manager, http-server, tool-bridge (forwards to
+                        renderer), claude-desktop (config install),
+                        stdio-bridge (separate bundle: mcp-stdio.js), config
+    mock-server/        mock-server-manager (lifecycle, ports),
+                        mock-server-runtime (node http server)
+    network/            network-agents (proxy + TLS agents, cookie jar
+                        singleton), tls-options, cookie-jar.service,
+                        cookie-header, network-settings.service
+    repositories/       settings, profile, activity, usage, mock servers
+    windows/            window-manager
+  preload/index.ts      contextBridge: exposes window.electronAPI (typed by
+                        shared/ipc/api.ts)
+
+src/                    Renderer (React)
+  app/App.tsx           Router + AppShell
+  core/                 product constants for the renderer
+  modules/
+    api-studio/         the API client: components/ (RequestBuilder,
+                        ResponseViewer, CollectionSidebar, dialogs,
+                        request/ and response/ sub-tabs), services/
+                        (apiClient, requestBuilder, inheritance,
+                        environment, collectionRunner, collectionImport,
+                        collectionFolderSync, postman, openapi, curlParser,
+                        codeGenerator, graphql/, mcp/ tool implementations,
+                        workspaceStorage), stores/apiStudioStore.ts
+    code-scanner/       CodeScannerPage, Enrich / Merge dialogs,
+                        ScanDiffPanel, codeScannerStore, importScan
+    ai-engineer/        AIEngineerPage, aiEngineerStore, aiTestRunner
+    mock-server/        Mock server UI
+  features/             settings (tabs registry, Network/MCP/Theme panels,
+                        About), ai (AI settings), onboarding, diagnostics,
+                        legal, updates
+  shared/               UI components (shadcn-style), hooks, stores
+                        (settings.store, ui.store), lib (theme engine,
+                        clipboard, desktop-api)
+
+shared/                 Used by every process; pure where possible
+  constants/            product.ts (names, IDs — never hard-code), terms.ts
+  ipc/                  channels.ts (channel names), api.ts (ElectronAPI type)
+  types/                api-studio, ai, ai-engineer, code-scanner,
+                        mock-server, network, updates, diagnostics, profile
+  settings/             registry.ts (every settings domain + storage),
+                        types.ts, updates.ts (resolveUpdateMode)
+  mcp/                  tools.ts (zod tool catalog), redact.ts, types.ts
+  lib/
+    code-scanner/       analyzer, detect, extractors/, group, merge,
+                        fingerprint, risks, scan-diff, validation-tests,
+                        spec-to-collection, to-openapi, enrich, paths
+    collection-files/   format, serialize, parse, secrets, node (fs adapter)
+    importers/          detect, insomnia, bruno, bru, har, openapi, common
+    mock-server/        defaults, route-matcher, templates, from-request,
+                        validation
+    network/            errors (explanations), proxy (bypass matching)
+    ai-engineer/        assertions, baseline-tests, collection-spec,
+                        execution-policy, openapi-import, sanitize-for-ai,
+                        schemas
+    json-path.ts, response-diff.ts, response-content.ts, redact-secrets.ts,
+    schema-example.ts, body-schema.ts, workspace-document.ts, ai-routing.ts,
+    ai-models.ts, llm-messages.ts, profile.ts, activity-calendar.ts
+
+tests/                  41 Vitest suites + fixtures/
+docs/                   COLLECTION_FILES.md, AI_ENGINEER.md, MOCK_SERVER.md,
+                        screenshots/
+build/                  icons, entitlements.mac.plist, mac-signing.cjs,
+                        license.txt (NSIS)
+.github/                quality.yml (CI), release.yml, issue/PR templates,
+                        dependabot
+out/, release/          build outputs (git-ignored)
+
+
+================================================================================
+6. PROCESS MODEL AND THE IPC CONTRACT
+================================================================================
+
+Three layers:
+
+  Main process   Node + Electron. Owns ALL network, file system and secrets:
+                 HTTP/WS engine, proxy/TLS/cookies, script sandbox, AI calls,
+                 Code Scanner file reads, mock servers, MCP server, storage,
+                 updater.
+  Preload        contextBridge exposing window.electronAPI. Nothing else.
+  Renderer       React UI. Never calls the network or fs directly.
+
+Rule: network, file system and secrets stay in main. Pure logic goes into
+shared/lib so it can be unit-tested without Electron.
+
+IPC contract
+  shared/ipc/channels.ts  IPC_CHANNELS — ~129 channels, namespaced:
+      app, onboarding, settings, profile, activity, api-key, ai, usage, log,
+      workspace, collection-folder, bug-report, api-studio, network, cookies,
+      mock-server, ai-engineer, code-scanner, mcp, updater
+  shared/ipc/api.ts       ElectronAPI interface (typed surface of preload)
+  electron/preload/index.ts  maps each method to ipcRenderer.invoke / on
+  electron/main/ipc/*.handlers.ts  ipcMain.handle implementations
+
+Most handlers return IpcResult<T> = { success, data?, error? }.
+
+Argument validation: electron/main/ipc/runtime-schema.ts provides a small
+schema DSL (string/number with bounds, pattern) and validatedHandle(channel,
+schemas, handler). Invalid arguments are logged and answered with
+{ success:false, error:'Invalid request: …' } instead of throwing. Common
+bounds are in ipcSchemas (id ≤256, path ≤32768, text ≤10M chars…).
+
+Events main -> renderer use webContents.send on channels such as
+api-studio:ws-event, code-scanner:progress, code-scanner:changed,
+collection-folder:changed, mcp:invoke, updater:status, app:navigate.
+
+Adding a channel: update channels.ts AND api.ts, add the handler in
+electron/main/ipc/, wire preload, and validate arguments.
+
+
+================================================================================
+7. THE REQUEST PIPELINE
+================================================================================
+
+Renderer (src/modules/api-studio/services/apiClient.ts):
+
+  1. applyParentInheritance(request, collection)  — inheritance.ts walks
+     request -> nearest folder -> ... -> collection and picks the first
+     non-"inherit" auth; merges inherited headers (child keys win) and
+     pre-request scripts (collection, folders, then request).
+  2. Pre-request scripts run in main (api-studio:run-pre-request); variable
+     changes come back.
+  3. applyEnvironmentVariables — substitutes {{var}} in URL, params,
+     headers, body, auth (environment.ts).
+  4. resolveRequest (requestBuilder.ts) — path params, query string, body
+     encoding, auth headers -> ResolvedHttpRequest; URL without a scheme gets
+     https://.
+  5. executeResolved -> IPC api-studio:send-request with a clientRequestId
+     (used for cancel: api-studio:cancel-request and stale-result checks).
+  6. finishExecution — GraphQL results are interpreted (data / errors).
+  7. Tests run in main (api-studio:run-tests) -> { results, variables, logs }.
+  8. History entry recorded; response stored on the tab.
+
+Main (electron/main/api-studio/http-client.service.ts):
+  - axios transport, `form-data` for multipart, raw string fallback for
+    intentionally invalid JSON.
+  - Redirects disabled in axios and followed manually (section 8).
+  - For each hop: agentsFor(url) gives proxy + TLS agents; cookies are
+    attached from the jar and Set-Cookie saved back.
+  - Auth signing that needs the final request (Digest, OAuth 1.0, AWS,
+    Hawk) is in request-auth.ts; OAuth 2.0 token flows in oauth2.service.ts.
+  - Errors are mapped to explanations (shared/lib/network/errors.ts).
+
+GraphQL: same pipeline, POST with { query, variables, operationName }.
+Introspection runs through the same engine. Schema tooling lives in
+src/modules/api-studio/services/graphql/.
+
+WebSocket (electron/main/api-studio/websocket.service.ts):
+  - buildWebSocketUrl() turns http(s)/bare hosts into ws(s) and appends
+    params. Connections use the same agents and cookie jar. Events go back to
+    the window that opened them via api-studio:ws-event. Channels: ws-connect,
+    ws-send, ws-close.
+
+
+================================================================================
+8. NETWORKING: PROXY, TLS, COOKIES, REDIRECTS, ERRORS
+================================================================================
+
+Settings: data/network.json via network-settings.service.ts. Secrets (proxy
+password, client-cert passphrases) go through network:update-secrets and are
+encrypted with safeStorage — never written to network.json.
+
+Proxy (electron/main/network/network-agents.ts, shared/lib/network/proxy.ts)
+  - Modes: none | system | manual.
+  - system: resolveProxyFor(url) asks Chromium (session.resolveProxy), so OS
+    settings and PAC files work. ws(s) URLs are resolved like their http(s)
+    twin. SOCKS results from PAC are not supported: the request goes direct
+    and a warning is logged.
+  - manual: HTTP proxy for http/ws, HTTPS proxy for https/wss (falls back to
+    the HTTP proxy), optional basic auth.
+  - Bypass list: NO_PROXY style — localhost, .corp.example (domain +
+    subdomains), *.internal, CIDR 10.0.0.0/8, host:port, <local>, *.
+  - Agents are cached by their effective configuration and dropped whenever
+    network settings change.
+  - https-proxy-agent drops agent TLS options when tunnelling, so target TLS
+    options are injected explicitly. The proxy itself is verified with the
+    same trust settings but never gets the client certificate.
+
+TLS (electron/main/network/tls-options.ts)
+  - rejectUnauthorized from the global switch or the per-request override.
+  - CA list = Node bundled roots + (optionally) the OS store (Node ≥ 22.15)
+    + user CA files.
+  - Client certificates matched by matchesHostPattern(): api.example.com,
+    *.example.com, optional :port (any port when omitted). PEM (cert + key)
+    or PFX/P12 + passphrase.
+  - File reads are injected for unit tests.
+
+Cookie jar (cookie-jar.service.ts, cookie-header.ts)
+  - tough-cookie store persisted to data/cookies/default.json, flushed on
+    quit. Singleton exported from network-agents.ts.
+  - Shared by HTTP (every redirect hop), WebSockets, runner, AI Engineer,
+    MCP tools. IPC: cookies:list / upsert / delete / clear.
+  - Per request opt-out ("Don't send cookies"); global toggle in Network.
+
+Redirects
+  - Followed by the engine, max 10 hops. Each hop gets its own agents and
+    cookies. Authorization and a manual Cookie header are dropped when the
+    redirect leaves the original origin. 303, and POST on 301/302, switch to
+    GET (browser behaviour).
+
+Error explanations (shared/lib/network/errors.ts)
+  - Maps Node/axios error codes (CERT_*, SELF_SIGNED*, ECONNREFUSED,
+    ENOTFOUND, ETIMEDOUT, proxy failures, …) to a title, explanation and
+    optional action (e.g. "Don't verify SSL for this request").
+
+
+================================================================================
+9. AUTH TYPES AND INHERITANCE
+================================================================================
+
+Types are listed in section 2.2 and in shared/mcp/tools.ts (AUTH_TYPES).
+UI: src/modules/api-studio/services/authTypes.ts and authHandler.ts.
+Main-side signing: electron/main/api-studio/request-auth.ts.
+OAuth 2.0: electron/main/api-studio/oauth2.service.ts (authorization code in an in-app
+auth window that captures the redirect_uri, client credentials, password;
+tokens reused until expiry).
+
+Inheritance (src/modules/api-studio/services/inheritance.ts):
+  - New requests default to "inherit".
+  - resolveInheritedAuth walks request -> nearest folder -> parent folders
+    -> collection and returns the first concrete auth, plus a description of
+    where it came from (shown in the Auth tab).
+  - mergeInheritedHeaders: parent headers merged in, child keys win.
+  - mergeInheritedPreRequestScript: collection, then folders (outermost
+    first), then the request.
+  - Tested in tests/api-studio-inheritance.test.ts.
+
+
+================================================================================
+10. SCRIPTS AND TESTS
+================================================================================
+
+Why a sandbox: scripts come from imported collections and are untrusted.
+node:vm is not a security boundary (pm.test.constructor('return process')()
+escaped it). Since this release scripts run in QuickJS compiled to WASM.
+
+electron/main/api-studio/script-sandbox.ts
+  - runInSandbox(options) runs one job in a worker_thread that loads QuickJS
+    (worker body is eval'd CommonJS so no extra bundle entry is needed).
+  - Only JSON strings cross the boundary: input JSON (variables, response,
+    request) in, the guest's finish() JSON out. The guest has no host
+    functions at all.
+  - SCRIPT_TIMEOUT_MS = 2000; SCRIPT_MEMORY_LIMIT_BYTES = 32 MB. QuickJS's
+    interrupt handler enforces the deadline; if the worker is still busy
+    shortly after, it is terminated.
+  - QuickJS packages are asarUnpack'ed in package.json so the WASM loads in
+    packaged builds.
+
+electron/main/api-studio/script-guest.ts — the `pm` API source evaluated
+inside QuickJS:
+  - pm.test, legacy tests[...] object, responseCode / responseBody globals
+  - pm.response: status (number, kept numeric for old scripts), code,
+    statusText, responseTime, json(), text(), headers.get/has,
+    pm.response.to.have.status / header / body / jsonBody,
+    pm.response.to.be.ok / success / clientError / serverError / notFound …
+  - pm.expect: chai-style chains with language words (to, be, been, is,
+    that, which, and, has, have, with, …), not, deep; assertions equal/eql,
+    include, property, a/an, above/below, lengthOf, match, oneOf, empty,
+    exist, ok, true/false/null/undefined …
+  - pm.environment, pm.collectionVariables, pm.globals (get/set/unset/has),
+    pm.variables.get resolving across scopes; replaceIn for {{templates}}.
+  - console.log/info/warn/error captured into `logs`.
+  - Not available: pm.sendRequest.
+
+electron/main/api-studio/script-runner.service.ts
+  - Builds the input, calls the sandbox, and re-validates everything the guest
+    returns (bounded, well-formed fields only — the output is
+    attacker-controlled).
+  - runTests IPC returns { results, variables, logs } so test scripts can set
+    variables (used by the Code Scanner login token script).
+  - test-runner.service.ts is a deprecated re-export.
+
+Collection runner (src/modules/api-studio/services/collectionRunner.ts):
+  sends every request in order with inheritance, runs tests, delay between
+  requests, stop on failure, report with totals and per-request lines.
+
+Tests: tests/script-runner-sandbox.test.ts (escape attempts, timeouts, memory
+cap independent of machine load, pm API).
+
+
+================================================================================
+11. COLLECTIONS, WORKSPACE PERSISTENCE AND COLLECTION FOLDERS
+================================================================================
+
+Domain types: shared/types/api-studio.ts (ApiCollection, ApiFolder,
+ApiRequest, Environment, KeyValuePair, RequestAuth, RequestBody, …).
+
+Renderer state: src/modules/api-studio/stores/apiStudioStore.ts (Zustand)
+holds collections, environments, active environment, tabs, history, UI state.
+Persisted through workspaceStorage.ts — a Zustand StateStorage whose writes
+are debounced and flushed synchronously on quit (workspace:save-sync).
+
+Main storage: electron/main/infra/workspace-store.ts
+  - File: <userData>/data/workspace.json (WORKSPACE_FILE_NAME in
+    shared/lib/workspace-document.ts).
+  - Atomic writes; previous good file kept as .bak.
+  - Payload sealed with safeStorage when OS encryption is available.
+  - Size-bounded (WORKSPACE_PAYLOAD_MAX_CHARS) and sanitised
+    (sanitizePersistBlob).
+
+Collection folders (git-friendly YAML)
+  Pure format code: shared/lib/collection-files/
+    format.ts     formatVersion (currently 1) and MIGRATIONS
+    serialize.ts  serializeCollection(collection, environments) ->
+                  { relativePath: text } — deterministic: fixed key order,
+                  2-space indent, no wrapping, block scalars for multi-line,
+                  empty values omitted, no timestamps.
+    parse.ts      parseCollectionFiles(files, { previous? }) ->
+                  { collection, environments, errors, fatal? }; a broken file
+                  goes to errors and is skipped.
+    secrets.ts    decides which values are secret (lock toggle, credential-
+                  looking keys with literal values, auth credentials);
+                  {{var}}-only values are not secret.
+    node.ts       readCollectionDirectory / loadCollectionDirectory /
+                  writeCollectionDirectory for Node (usable by a future CLI).
+  Main: electron/main/infra/collection-folders.service.ts
+    - Only folders chosen in a native dialog are approved (persisted in
+      data/collection-folders.json); the renderer can read/write/watch
+      nothing else.
+    - Tracks its own writes so they are not reported back as external.
+    - fs.watch per folder -> collection-folder:changed events.
+  Renderer: src/modules/api-studio/services/collectionFolderSync.ts
+    - startCollectionFolderSync() subscribes to the store; edits are written
+      ~500 ms later, only changed files rewritten, raw text kept so
+      hand-formatted files are not touched when unchanged.
+    - External changes reload the collection; dirty tabs keep drafts.
+    - Conflict (disk changed while local edits pending) pauses saving until
+      resolveConflict(id, 'disk' | 'local').
+    - Fatal states (missing shurikly.collection.yaml, newer formatVersion,
+      folder moved) pause saving and show a warning.
+    - API: openFolderAsCollection, saveCollectionToFolder,
+      unlinkCollectionFolder, reloadCollectionFolder, revealCollectionFolder,
+      forgetCollectionFolder.
+  Secret values of linked collections stay in the encrypted workspace; tabs,
+  history and UI state always stay in the workspace.
+  Tests: tests/collection-files.test.ts, tests/collection-folder-sync.test.ts.
+  User spec: docs/COLLECTION_FILES.md.
+
+
+================================================================================
+12. IMPORT AND EXPORT
+================================================================================
+
+shared/lib/importers/
+  detect.ts     parseStructured (JSON, then YAML) and detectImportFormat ->
+                shurikly | postman | insomnia | bruno | har | openapi |
+                curl, or null (ImportFormat in common.ts)
+  insomnia.ts   v4 export (JSON/YAML) and v5 YAML: workspaces, request groups
+                -> folders, requests, auth, environments (sub-env merged over
+                base)
+  bruno.ts/bru.ts  .bru parser and collection builder: bruno.json, nested
+                .bru, folder.bru / collection.bru, environments/*.bru;
+                bru.*/res.* basics and assert blocks -> pm scripts, unknown
+                calls kept as comments
+  har.ts        HAR 1.2: one request per entry, folders by host, optional
+                skip of images / CSS / JS / fonts
+  openapi.ts    OpenAPI import entry for the dialog
+  common.ts     shared helpers + import summary (skipped items)
+Main: electron/main/api-studio/bruno-folder.ts reads a Bruno folder from disk
+(api-studio:pick-import-folder).
+Renderer: services/collectionImport.ts, postman.ts, openapi.ts, curlParser.ts;
+ImportCollectionDialog.tsx (drop / pick / paste, summary).
+Export: CollectionExportDialog.tsx -> Postman, OpenAPI, cURL, Markdown, HTML
+(api-studio:export-collection).
+Tests: tests/importers.test.ts, tests/openapi-import.test.ts.
+
+
+================================================================================
+13. CODE SCANNER
+================================================================================
+
+Flow
+  1. code-scanner:pick-folder — native dialog; root added to approved roots
+     (data/code-scanner-roots.json). Only approved roots can be scanned, read
+     or opened. Kept in main so the renderer cannot add one.
+  2. code-scanner:scan — code-scanner.service.ts walks the folder (respects
+     .gitignore via `ignore`, skips node_modules / hidden), reads candidate
+     files only, yields to the event loop between batches, reports progress
+     (code-scanner:progress), cancellable.
+  3. ProjectAnalyzer (shared/lib/code-scanner/analyzer.ts) runs extractors,
+     resolves imports across files, merges duplicate endpoints, detects
+     frameworks (detect.ts) and base URL (.env, proxies, listen port, default
+     dev port per framework). Test files are ignored.
+  4. Renderer review page (CodeScannerPage.tsx): summary chips, collection
+     name, base URL / {{baseUrl}}, grouped endpoint list with source
+     file:line, filters, selection, risk badges, hand-off bar.
+  5. Import (services/importScan.ts) -> spec-to-collection.ts builds the
+     collection (groups, folders, login token script, validation requests),
+     or merge-collection.ts merges into an existing one.
+
+Extractors (shared/lib/code-scanner/extractors/)
+  node-server.ts   Express / Fastify (TypeScript compiler API)
+  nestjs.ts        controllers + decorators, guards for auth
+  nextjs.ts        app router route handlers, pages/api
+  python/          dependency-free logical-line reader (source.ts); FastAPI
+                   / Flask routers, Django urls + DRF, models, request usage
+  openapi.ts       OpenAPI 3 / Swagger 2 in the repo ($ref aware)
+  frontend/collect.ts  fetch / axios / ky / ofetch / superagent / SWR /
+                   RTK Query / Angular / SDKs / GraphQL clients, wrappers
+                   across files, Vue/Svelte script blocks
+  frontend/link.ts links frontend calls to backend routes
+  request-inputs.ts, validator-example.ts  bodies from zod / joi / yup /
+                   TypeBox / Fastify JSON Schema / express-validator
+  Shared: common.ts, ts-utils.ts, shared/lib/schema-example.ts,
+          shared/lib/body-schema.ts (BodySchema rules attached to example
+          objects via a WeakMap)
+
+Post-processing
+  group.ts           resource keys: singular/plural, case, kebab/camel
+                     folded; login/register/token -> auth; OpenAPI tag wins;
+                     nested sub-resources
+  fingerprint.ts     structural fingerprints for re-scan matching
+  merge-collection.ts keeps user edits and user scripts, adds new endpoints,
+                     flags removed ones, matches renamed folders by resource
+  risks.ts           review findings: open-write, open-admin,
+                     open-sensitive-read, broken-call, unused-route,
+                     unvalidated-body (high/medium/low). Open-route checks
+                     only when the scan saw protected routes.
+  validation-tests.ts invalid-body cases (missing required, bad format
+                     email/uuid/url/date, enum, wrong type, min/max length,
+                     min/max value), capped per endpoint; a 4xx that is not
+                     auth/routing passes, 2xx and 5xx fail
+  scan-diff.ts       diffScans(before, after) -> added / changed / removed;
+                     diffToMarkdown for PR descriptions
+  to-openapi.ts      export the scan as OpenAPI
+  enrich.ts          AI enrichment prompts + grounding checks
+
+Extras
+  - Watch mode (code-scanner:watch / code-scanner:changed): debounced
+    rescans on file bursts with a diff panel.
+  - Branch compare (code-scanner:scan-ref): scans another git ref and diffs.
+  - Open in editor (open-in-editor.ts): tries vscode://, cursor://,
+    windsurf://, zed:// URLs at file:line; falls back to the default app.
+    Only files inside the scanned root (symlinks resolved).
+  - AI enrichment (code-scanner:enrich-estimate / enrich): per-run consent,
+    goes through aiRouter (budget + usage), snippets scrubbed of secrets,
+    answers grounded against the code that was sent.
+  - get_request_source MCP tool (opt-in) reads handler code of scanned
+    requests.
+
+Tests: tests/code-scanner*.test.ts (core, phase2, frontend, auth, schemas,
+validation, group, merge, diff, enrich, mock-handoff).
+
+
+================================================================================
+14. AI LAYER
+================================================================================
+
+electron/main/ai/
+  providers/       openai, anthropic, gemini, ollama, openai-compatible
+                   (instances for DeepSeek, OpenRouter, custom), registry
+  router/router.ts aiRouter — picks providers by mode and request type;
+                   ordered fallback list (selected first, then local <->
+                   cloud when fallback is on); caches identical non-chat
+                   prompts
+  config/          ai-config.service.ts -> <userData>/ai-provider-config.json
+  cache/prompt-cache.ts  TTL + LRU-ish cache; streaming chat never cached
+  metrics/         latency / usage metrics
+  credit-guard.ts  budget checks, token reservations, per-project generate
+                   locks (CreditBudgetError)
+shared/lib/ai-routing.ts  mode -> provider and default models
+shared/lib/ai-models.ts   model list and pricing
+API keys: electron/main/infra/api-key.service.ts (safeStorage, per provider).
+Usage: data/usage.json via usage.repository + usage tracker; Settings ->
+Usage dashboard.
+Modes: cloud (selected provider), local (Ollama), hybrid (light tasks local,
+heavy tasks cloud).
+API Studio AI actions: api-studio-ai.service.ts + channels api-studio:ai-*
+(generate, explain, tests, fix, document, describe, enhance).
+Tests: tests/llm-gateway.test.ts, tests/credit-guard.test.ts.
+
+
+================================================================================
+15. AI ENGINEER
+================================================================================
+
+Shared logic (shared/lib/ai-engineer/):
+  collection-spec.ts  collection -> ApiSpec (endpoints, params, bodies)
+  openapi-import.ts   OpenAPI -> ApiSpec
+  baseline-tests.ts   reachability + missing-auth probes without AI
+  assertions.ts       assertion evaluation
+  execution-policy.ts safe methods (GET/HEAD/OPTIONS) vs approval needed
+  sanitize-for-ai.ts  redaction before anything is sent to AI
+  schemas.ts          validation of AI-produced tests
+Main: analysis.service, test-generation.service, failure-analysis.service,
+ai-engineer-provider, repository (data/ai-engineer.json).
+Renderer: AIEngineerPage -> aiEngineerStore.runSuite(suite, collection,
+approvedMutations, variables) -> services/aiTestRunner.ts, which builds
+ApiRequests and runs them through the normal prepareRequest / IPC path (so
+proxy, TLS and cookies apply). Variables of the active environment are
+passed in. Evidence (request, response, failed assertion) is redacted
+before storage.
+Privacy: "Send API data to AI provider" off by default.
+Known gap: generated tests are created with empty pathParams, so `:id`
+segments are sent literally.
+Docs: docs/AI_ENGINEER.md. Tests: tests/ai-engineer.test.ts.
+
+
+================================================================================
+16. MOCK SERVER
+================================================================================
+
+Main: mock-server-manager.ts (create/start/stop/restart, port finding from
+4010, shutdown on quit), mock-server-runtime.ts (node http server: route
+matching, response selection, delay, templates, CORS incl. OPTIONS 204,
+405 with Allow, 400 listing response names for unknown X-Mock-Response,
+request log).
+Shared: route-matcher.ts (static segments beat :params; query ignored for
+matching), templates.ts ({{params.*}}, {{query.*}}, {{headers.*}},
+{{body.*}}, {{method}}, {{path}}, {{host}}; missing -> ""),
+from-request.ts (build routes from collections / save response as example:
+strips {{baseUrl}}, {{id}}/{id} -> :id, drops transport headers),
+validation.ts, defaults.ts (DEFAULT_MOCK_PORT = 4010).
+Storage: data/mock-servers.json. Servers start stopped after restart.
+Docs: docs/MOCK_SERVER.md. Tests: tests/mock-server*.test.ts.
+
+
+================================================================================
+17. MCP SERVER
+================================================================================
+
+  shared/mcp/tools.ts     MCP_TOOLS: zod schemas + descriptions for 28 tools.
+                          Main registers them; renderer implements them.
+  shared/mcp/redact.ts    secret redaction ([REDACTED]); sending the
+                          placeholder back keeps the stored value
+  electron/main/mcp/
+    mcp-manager.ts        starts/stops per config (data/mcp-server.json:
+                          enabled, port 47823, token, exposeSecrets,
+                          exposeSourceCode)
+    http-server.ts        Streamable HTTP on 127.0.0.1:<port>/mcp, GET
+                          /health, bearer token check, Host header allow-list
+                          (127.0.0.1:<port>, localhost:<port>),
+                          waits for the renderer to be ready
+    tool-bridge.ts        forwards each call to the renderer (mcp:invoke ->
+                          mcp:result) so edits hit the live store and show
+                          up in the window
+    claude-desktop.ts     writes an "api-studio" entry into
+                          claude_desktop_config.json, leaving other servers
+    stdio-bridge.ts       separate bundle (out/main/mcp-stdio.js, shipped as
+                          extraResource). Claude Desktop runs it with
+                          ELECTRON_RUN_AS_NODE=1; it relays newline JSON-RPC
+                          to the HTTP server and launches the app if needed.
+                          stdout = protocol only; logs on stderr.
+  Renderer implementations: src/modules/api-studio/services/mcp/.
+
+Tools (28):
+  Read:        list_collections, get_collection, get_request,
+               get_request_source (opt-in), search_requests,
+               list_environments, list_history, get_active_tab,
+               export_collection, generate_code_snippet
+  Collections: create/update/delete_collection, create/update/delete_folder
+  Requests:    create_request, update_request, delete_request, open_request
+  Environments: create/update/delete_environment, set_active_environment
+  Import:      import_collection, import_curl
+  Execute:     send_request, run_collection
+
+Server name in client configs is MCP_SERVER_NAME = 'api-studio'.
+Tests: tests/mcp-request-fields.test.ts, tests/mcp-stdio-messages.test.ts.
+
+
+================================================================================
+18. SETTINGS, PROFILE, ONBOARDING, DIAGNOSTICS
+================================================================================
+
+Settings registry: shared/settings/registry.ts — SETTINGS_DOMAINS lists every
+domain with its storage location and tab:
+  profile     data/profile.json          tab Profile    (group Account)
+  appearance  localStorage 'ai-studio-ui' tab Appearance (Workspace)
+  network     data/network.json          tab Network    (Workspace)
+  ai          ai-provider-config.json    tab AI         (AI)
+  mcp         data/mcp-server.json       tab MCP        (AI)
+  usage       data/usage.json            tab Usage      (AI)
+  about       data/settings.json         tab About      (Help)
+  api-studio  data/workspace.json        (not a settings tab)
+UI registry: src/features/settings/registry/settings-tabs.tsx (icons,
+groups, search keywords, panels). Tests: tests/settings-registry.test.ts.
+
+Onboarding: three steps (welcome, local-first, terms + start actions);
+electron/main/infra/onboarding.service.ts (data/onboarding.json, terms
+version in shared/constants/terms.ts).
+Profile & activity: repositories/profile + activity, shared/lib/profile.ts,
+shared/lib/activity-calendar.ts.
+Diagnostics: logger.service (recent logs), bug-report.service (local
+reports, credential redaction via shared/lib/redact-secrets.ts). Renderer
+errors and unhandled rejections are logged globally.
+
+
+================================================================================
+19. AUTO-UPDATE, SIGNING AND RELEASES
+================================================================================
+
+Auto-update: electron/main/infra/updater.service.ts (electron-updater, GitHub
+provider). Checks on launch and every 6 hours unless "Check for updates
+automatically" is off (then no network calls except a manual check).
+shared/settings/updates.ts resolveUpdateMode():
+  Windows (NSIS), Linux (AppImage)  -> download in background, "Restart and
+                                       update"
+  macOS (ad-hoc signed)             -> notice with release link (Squirrel.Mac
+                                       cannot update ad-hoc apps)
+Switch macOS to 'install' once Developer ID signing is in place; the .zip
+target Squirrel needs is already built. IPC: updater:get-status / check /
+install / status. Tests: tests/updater-service.test.ts, tests/updates.test.ts.
+
+Signing: build/mac-signing.cjs (extended by package.json "build"). Default is
+ad-hoc signing (Apple silicon refuses unsigned code). With CSC_LINK,
+CSC_KEY_PASSWORD (+ APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID)
+secrets set in CI, it signs with hardened runtime +
+build/entitlements.mac.plist and notarizes. Local dist:mac / build:mac keep
+CSC_IDENTITY_AUTO_DISCOVERY=false (set CSC_NAME to sign locally). Check a
+build: codesign -dv release/mac/Shurikly.app -> Signature=adhoc.
+
+CI (.github/workflows):
+  quality.yml  push to main + PRs: npm ci, lint, verify on ubuntu, macOS,
+               Windows.
+  release.yml  on vX.Y.Z tags: builds each OS with `electron-builder
+               --publish always` into a DRAFT GitHub release (installers +
+               latest*.yml). Publish the draft after all three jobs finish.
+Release checklist: bump "version" in package.json to match the tag (the
+updater compares them), update CHANGELOG.md, tag, wait for 3 jobs, publish.
+
+Packaging notes (package.json "build"): appId com.shurikly.app; extra
+resources shurikly.png, app-icon.png, mcp-stdio.js; QuickJS packages
+asarUnpack'ed; mac targets dmg + zip; win nsis (custom dir, shortcuts,
+license); linux AppImage; publish github shurikly/shurikly draft.
+
+
+================================================================================
+20. DATA STORAGE REFERENCE
+================================================================================
+
+userData = <appData>/shurikly
+  macOS    ~/Library/Application Support/shurikly
+  Windows  %APPDATA%\shurikly
+  Linux    ~/.config/shurikly
+
+  ai-provider-config.json      AI config (keys encrypted)       [root]
+  data/workspace.json (+.bak)  collections, envs, tabs, history  (sealed
+                               with safeStorage when available)
+  data/collection-folders.json linked collection folders
+  data/cookies/default.json    cookie jar
+  data/network.json            proxy / TLS settings (no secrets)
+  data/settings.json           app settings incl. update prefs
+  data/usage.json              AI usage and cost
+  data/ai-engineer.json        analyses, suites, runs, findings
+  data/mock-servers.json       mock servers
+  data/mcp-server.json         MCP config + launch command for the bridge
+  data/code-scanner-roots.json approved scan roots
+  data/profile.json, data/activity.json, data/onboarding.json
+  logs / bug reports           managed by logger and bug-report services
+
+Helpers: electron/main/infra/json-store.ts (readJsonFile / writeJsonFile /
+dataFilePath under data/). Data from earlier app names (APIMaster, API
+Studio) is not migrated. Encrypted values are tied to the machine.
+
+
+================================================================================
+21. SECURITY MODEL
+================================================================================
+
+  - Renderer has no Node access; everything goes through validated IPC.
+  - Files: only user-picked folders (collection folders, scan roots) can be
+    read, written, watched or opened; paths are checked against the root
+    with symlinks resolved.
+  - Secrets: AI keys, proxy password, client-cert passphrases, workspace
+    payload -> safeStorage. Secrets never written to collection folders.
+  - Scripts: QuickJS WASM sandbox in a worker, JSON-only boundary, 2 s /
+    32 MB, outputs re-validated.
+  - Redirects drop Authorization / Cookie across origins.
+  - MCP: off by default, 127.0.0.1, bearer token, Host check, secrets
+    redacted and source code withheld unless enabled.
+  - Mock servers bind to 127.0.0.1 by default.
+  - AI: off until configured; AI Engineer data sharing off by default; Code
+    Scanner asks per run; redact-secrets / sanitize-for-ai / scrubCode before
+    sending.
+  - Diagnostics: credentials redacted; nothing uploaded automatically.
+  - Report vulnerabilities privately (SECURITY.md).
+
+
+================================================================================
+22. TESTING
+================================================================================
+
+  npm test            all suites (tests/**/*.test.ts, node environment)
+  npx vitest run tests/network-tls.test.ts   one suite
+  npm run test:watch  watch mode
+
+41 suites cover: auth, inheritance, workspace store, GraphQL (logic + UI),
+response inspection, network engine / proxy / TLS / cookies, script sandbox,
+importers, OpenAPI import, collection files + folder sync, Code Scanner (11
+suites), mock server, MCP fields + stdio framing, AI gateway + credit guard,
+AI Engineer, redaction, settings registry, runtime IPC schema, updater,
+profile / activity, utils. Fixtures live in tests/fixtures/.
+
+Guidelines: put logic in shared/lib and test it there; inject fs / clock /
+OS dependencies (see tls-options.ts) rather than mocking Electron; tests must
+not depend on machine speed (see the sandbox memory-cap test).
+
+
+================================================================================
+23. CODING CONVENTIONS AND HOW TO ADD THINGS
+================================================================================
+
+Style: TypeScript everywhere (avoid any); Prettier — no semicolons, single
+quotes, 100 columns; comments explain why, not what; match surrounding code.
+Names and IDs come from shared/constants/product.ts.
+PRs: branch from main (fix/…, feat/…, docs/…), focused changes, tests,
+`npm run verify` + `npm run lint`, CHANGELOG "Unreleased" line for
+user-visible changes, screenshots for UI.
+
+Recipes
+  New IPC call     channels.ts + api.ts + handler (validatedHandle) + preload.
+  New setting tab  add a domain in shared/settings/registry.ts, a tab entry in
+                   settings-tabs.tsx, storage via json-store.
+  New auth type    shared types + authTypes.ts UI + request-auth.ts signing +
+                   AUTH_TYPES in shared/mcp/tools.ts + collection-files
+                   secrets list + tests.
+  New importer     shared/lib/importers/<name>.ts, register in detect.ts and
+                   index.ts, add summary of skipped items, tests.
+  New scanner      extractor in shared/lib/code-scanner/extractors/, plug into
+  framework        ProjectAnalyzer (analyzer.ts) + detect.ts, fixture-based
+                   tests. Wanted: Spring, Go, Laravel, Rails, Koa, Hono, hapi,
+                   tRPC.
+  New MCP tool     zod spec in shared/mcp/tools.ts, renderer implementation in
+                   services/mcp/, consider redaction, tests.
+  Collection file  bump formatVersion and add a MIGRATIONS step in
+  format change    shared/lib/collection-files/format.ts.
+  New pm API       script-guest.ts (runs in QuickJS — plain ES, no host
+                   objects), validate any new output in script-runner.service.
+
+
+================================================================================
+24. KNOWN LIMITATIONS AND ROADMAP
+================================================================================
+
+Limitations
+  - macOS: ad-hoc signed, not notarized (Gatekeeper warns once); no in-place
+    updates on macOS. Windows installer unsigned.
+  - SOCKS proxies from PAC unsupported (direct + warning).
+  - No pm.sendRequest.
+  - Form-data file bytes and cached GraphQL schemas are not written to
+    collection folders.
+  - AI Engineer does not fill :path params in generated tests.
+  - Code Scanner: one URL parameter per frontend wrapper; Fastify
+    @fastify/autoload directory prefixes (only autoPrefix), NestJS
+    RouterModule paths and MiddlewareConsumer.forRoutes auth, Django regex
+    routes with character classes outside named groups are not followed.
+  - No migration from earlier app names' data folders.
+
+Roadmap
+  - Code Scanner: Spring, Go, Laravel, Rails, Koa, Hono, hapi, tRPC; GraphQL
+    server schemas; multi-folder scans; request preview; CLI / CI API diff;
+    worker-thread scanning and list virtualisation.
+  - CLI runner for collection folders (node.ts already loads them).
+  - AI Engineer phase 2: security scan, API diff, conversational agent,
+    docs export.
+  - Developer ID signing + notarization + macOS in-place updates; signed
+    Windows installer; Windows arm64.
+  - SOCKS proxies, pm.sendRequest, more snippet languages, gRPC.
+
+
+================================================================================
+25. GLOSSARY
+================================================================================
+
+  API Studio      Internal name of the API client module (src/modules/
+                  api-studio, IPC namespace api-studio, MCP server name).
+  Workspace       Everything in data/workspace.json for the local user.
+  Linked          A collection synced to a folder of YAML files.
+  collection
+  Approved root   A folder the user picked in a native dialog; the only kind
+                  of folder main will touch for scans / collection folders.
+  Hop             One request in a redirect chain.
+  Baseline tests  AI Engineer tests generated without AI.
+  Guest           Code running inside the QuickJS sandbox.
+  Hand-off        Sending scan results to Mock Server / AI Engineer /
+                  OpenAPI export.
+
+================================================================================
+                                End of guide
+================================================================================

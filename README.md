@@ -135,6 +135,7 @@ npm run dist:mac # or dist:win / dist:linux — installers land in release/
 - [Collection files](docs/COLLECTION_FILES.md)
 - [AI Engineer](docs/AI_ENGINEER.md)
 - [Mock Server](docs/MOCK_SERVER.md)
+- [Developer guide](DEVELOPER_GUIDE.txt) — architecture, every feature's internals, storage, security, testing and releases
 - [Changelog](CHANGELOG.md)
 
 ## Contributing
