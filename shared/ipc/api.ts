@@ -70,6 +70,15 @@ import type {
   CodeScanResult,
   DetectedEndpoint
 } from '../types/code-scanner'
+import type {
+  CookieDeleteInput,
+  NetworkSecretsPatch,
+  NetworkSettingsPatch,
+  NetworkSettingsView,
+  StoredCookie,
+  WebSocketConnectInput,
+  WebSocketEvent
+} from '../types/network'
 import type { McpInvokeMessage, McpInvokeResult, McpServerConfigPatch, McpServerStatus } from '../mcp/types'
 
 export interface ElectronAPI {
@@ -170,6 +179,34 @@ export interface ElectronAPI {
       describeRequest: (input: DescribeApiRequestInput) => Promise<IpcResult<string>>
       enhance: (input: EnhanceApiRequestInput) => Promise<IpcResult<EnhanceApiRequestResult>>
     }
+    /** WebSockets run in the main process so headers, proxy, TLS and cookies apply. */
+    websocket: {
+      connect: (input: WebSocketConnectInput) => Promise<IpcResult>
+      send: (connectionId: string, data: string) => Promise<IpcResult>
+      close: (connectionId: string) => Promise<IpcResult>
+      onEvent: (callback: (event: WebSocketEvent) => void) => () => void
+    }
+  }
+  network: {
+    getSettings: () => Promise<IpcResult<NetworkSettingsView>>
+    updateSettings: (patch: NetworkSettingsPatch) => Promise<IpcResult<NetworkSettingsView>>
+    /** Secrets are encrypted with the OS keychain; only their presence comes back. */
+    updateSecrets: (patch: NetworkSecretsPatch) => Promise<IpcResult<NetworkSettingsView>>
+    /** Native file picker for certificates; resolves to null when cancelled. */
+    pickFile: (input: { title: string; kind: 'pem' | 'key' | 'pfx' | 'any' }) => Promise<IpcResult<string | null>>
+    /** Which proxy a URL would use with the current settings. */
+    resolveProxy: (url: string) => Promise<
+      IpcResult<{ proxy: string | null; source: 'none' | 'system' | 'manual' | 'bypass'; unsupported?: string }>
+    >
+  }
+  cookies: {
+    list: () => Promise<IpcResult<StoredCookie[]>>
+    upsert: (input: {
+      cookie: StoredCookie
+      previous?: { domain: string; path: string; name: string }
+    }) => Promise<IpcResult<StoredCookie[]>>
+    delete: (input: CookieDeleteInput) => Promise<IpcResult<StoredCookie[]>>
+    clear: () => Promise<IpcResult<StoredCookie[]>>
   }
   mockServer: {
     list: () => Promise<IpcResult<MockServer[]>>

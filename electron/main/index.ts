@@ -8,6 +8,7 @@ import { createMainWindow, getAppIconPath, getMainWindow, showMainWindow } from 
 import { APP_ID, PRODUCT_NAME } from '@shared/constants/product'
 import { mockServerManager } from './mock-server/mock-server-manager'
 import { mcpManager } from './mcp/mcp-manager'
+import { cookieJar } from './network/network-agents'
 
 app.setName(PRODUCT_NAME)
 
@@ -47,6 +48,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   void mockServerManager.shutdownAll()
   void mcpManager.stop()
+  void cookieJar.flush().catch(() => undefined)
 })
 
 process.on('uncaughtException', (error) => {

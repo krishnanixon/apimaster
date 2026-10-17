@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Palette, Info, Sparkles, BarChart3, Cable, UserRound } from 'lucide-react'
+import { Palette, Info, Sparkles, BarChart3, Cable, UserRound, Globe } from 'lucide-react'
 import type { SettingsTabId } from '@shared/settings'
 import { getCentralizedSettingsDomains } from '@shared/settings'
 import { AboutPanel } from '@/features/settings/panels/AboutPanel'
@@ -9,6 +9,7 @@ import { UsageDashboard } from '@/features/settings/components/UsageDashboard'
 import { ThemeStudio } from '@/features/settings/components/ThemeStudio'
 import { AISettings } from '@/features/ai/components/AISettings'
 import { McpSettings } from '@/features/settings/components/McpSettings'
+import { NetworkSettings } from '@/features/settings/components/NetworkSettings'
 
 export type SettingsGroupId = 'account' | 'workspace' | 'intelligence' | 'help'
 
@@ -71,6 +72,25 @@ const TAB_META: Record<
       'contrast'
     ],
     Panel: () => <ThemeStudio />
+  },
+  network: {
+    icon: Globe,
+    group: 'workspace',
+    keywords: [
+      'proxy',
+      'ssl',
+      'tls',
+      'certificate',
+      'ca',
+      'mtls',
+      'client certificate',
+      'pfx',
+      'cookies',
+      'cookie jar',
+      'no_proxy',
+      'pac'
+    ],
+    Panel: () => <NetworkSettings />
   },
   ai: {
     icon: Sparkles,

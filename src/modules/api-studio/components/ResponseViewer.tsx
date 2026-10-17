@@ -17,6 +17,8 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import ReactMarkdown from 'react-markdown'
+import { isCertificateVerificationError } from '@shared/lib/network/errors'
+import { NetworkErrorView } from './response/NetworkErrorView'
 import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
 import { Spinner } from '@/shared/components/ui/spinner'
@@ -70,6 +72,7 @@ export function ResponseViewer({ tabId }: { tabId: string }) {
   const saveResponseToFile = useApiStudioStore((s) => s.saveResponseToFile)
   const pinResponseBaseline = useApiStudioStore((s) => s.pinResponseBaseline)
   const clearResponseBaseline = useApiStudioStore((s) => s.clearResponseBaseline)
+  const updateDraft = useApiStudioStore((s) => s.updateDraft)
   const mockServers = useMockServerStore((s) => s.servers)
   const refreshMockServers = useMockServerStore((s) => s.refresh)
   const addExampleFromResponse = useMockServerStore((s) => s.addExampleFromResponse)
@@ -262,6 +265,19 @@ export function ResponseViewer({ tabId }: { tabId: string }) {
             Press <kbd className="rounded border border-border bg-muted px-1 py-px font-mono">Ctrl+Enter</kbd> to send
           </p>
         </div>
+      ) : response.status === 0 && response.networkError ? (
+        <NetworkErrorView
+          info={response.networkError}
+          message={response.error}
+          onDisableVerification={
+            isCertificateVerificationError(response.networkError) && tab.request.network?.verifySsl !== false
+              ? () => {
+                  updateDraft(tabId, { network: { ...tab.request.network, verifySsl: false } })
+                  toast.success('SSL verification is off for this request — send it again')
+                }
+              : undefined
+          }
+        />
       ) : (
         <>
           <div className="flex shrink-0 items-center gap-0 border-b border-border/40 px-1">

@@ -4,6 +4,8 @@
  * process (HTTP execution proxy, test sandbox, AI assist).
  */
 
+import type { NetworkErrorInfo, RequestNetworkOptions } from './network'
+
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
 
 export interface KeyValuePair {
@@ -169,6 +171,8 @@ export interface ApiRequest {
   folderId?: string | null
   /** Per-request timeout; defaults to 30s when omitted. */
   timeoutMs?: number
+  /** Per-request SSL verification / cookie overrides (Settings tab). */
+  network?: RequestNetworkOptions
   /**
    * Set on requests created by the Code Scanner: which endpoint it came from (`key`) and a
    * fingerprint of the structure it was generated with, so a re-scan can tell code changes from edits.
@@ -242,6 +246,8 @@ export interface ApiExecutionResult {
   timeMs: number
   sizeBytes: number
   error?: string
+  /** Set when `error` is a TLS, proxy or connection failure the UI can explain. */
+  networkError?: NetworkErrorInfo
   aborted?: boolean
   /** Set for GraphQL calls so HTTP status and GraphQL errors stay distinct. */
   graphql?: GraphQLResponseInfo
@@ -261,6 +267,7 @@ export interface ResolvedHttpRequest {
    * process: JWT, Digest, OAuth 1.0, AWS Signature, Hawk.
    */
   auth?: RequestAuth
+  network?: RequestNetworkOptions
 }
 
 export interface ApiTestResult {

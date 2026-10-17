@@ -127,7 +127,31 @@ const api: ElectronAPI = {
         ipcRenderer.invoke(IPC_CHANNELS.API_STUDIO_AI_DESCRIBE, input),
       enhance: (input) =>
         ipcRenderer.invoke(IPC_CHANNELS.API_STUDIO_AI_ENHANCE, input)
+    },
+    websocket: {
+      connect: (input) => ipcRenderer.invoke(IPC_CHANNELS.API_STUDIO_WS_CONNECT, input),
+      send: (connectionId, data) => ipcRenderer.invoke(IPC_CHANNELS.API_STUDIO_WS_SEND, connectionId, data),
+      close: (connectionId) => ipcRenderer.invoke(IPC_CHANNELS.API_STUDIO_WS_CLOSE, connectionId),
+      onEvent: (callback) => {
+        const handler = (_event: Electron.IpcRendererEvent, payload: Parameters<typeof callback>[0]) =>
+          callback(payload)
+        ipcRenderer.on(IPC_CHANNELS.API_STUDIO_WS_EVENT, handler)
+        return () => ipcRenderer.removeListener(IPC_CHANNELS.API_STUDIO_WS_EVENT, handler)
+      }
     }
+  },
+  network: {
+    getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.NETWORK_GET_SETTINGS),
+    updateSettings: (patch) => ipcRenderer.invoke(IPC_CHANNELS.NETWORK_UPDATE_SETTINGS, patch),
+    updateSecrets: (patch) => ipcRenderer.invoke(IPC_CHANNELS.NETWORK_UPDATE_SECRETS, patch),
+    pickFile: (input) => ipcRenderer.invoke(IPC_CHANNELS.NETWORK_PICK_FILE, input),
+    resolveProxy: (url) => ipcRenderer.invoke(IPC_CHANNELS.NETWORK_RESOLVE_PROXY, url)
+  },
+  cookies: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.COOKIES_LIST),
+    upsert: (input) => ipcRenderer.invoke(IPC_CHANNELS.COOKIES_UPSERT, input),
+    delete: (input) => ipcRenderer.invoke(IPC_CHANNELS.COOKIES_DELETE, input),
+    clear: () => ipcRenderer.invoke(IPC_CHANNELS.COOKIES_CLEAR)
   },
   mockServer: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.MOCK_SERVER_LIST),

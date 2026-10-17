@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronRight, Code2, Columns2, Copy, MoreHorizontal, Pencil, Rows2, Save, Trash2 } from 'lucide-react'
+import { ChevronRight, Code2, Columns2, Cookie, Copy, MoreHorizontal, Pencil, Rows2, Save, Trash2 } from 'lucide-react'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
 import {
@@ -10,6 +10,7 @@ import {
 } from '@/shared/components/ui/dropdown-menu'
 import { cn } from '@/shared/lib/utils'
 import { EnvironmentSelector } from './EnvironmentSelector'
+import { CookieManagerDialog } from './CookieManagerDialog'
 import { useApiStudioStore } from '../stores/apiStudioStore'
 import type { RequestTab, RequestType } from '../types/api.types'
 import { applyRequestType } from '../services/graphql/model'
@@ -34,6 +35,7 @@ export function ApiStudioToolbar({ tabId, onSave, onClear, onViewCode }: ApiStud
   const copyTabAsCurl = useApiStudioStore((s) => s.copyTabAsCurl)
   const workspaceSplit = useApiStudioStore((s) => s.workspaceSplit)
   const setWorkspaceSplit = useApiStudioStore((s) => s.setWorkspaceSplit)
+  const [cookiesOpen, setCookiesOpen] = useState(false)
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
@@ -152,6 +154,11 @@ export function ApiStudioToolbar({ tabId, onSave, onClear, onViewCode }: ApiStud
       </div>
 
       <EnvironmentSelector compact />
+
+      <Button variant="ghost" size="icon" className="h-6 w-6" title="Cookies" onClick={() => setCookiesOpen(true)}>
+        <Cookie className="h-3.5 w-3.5" />
+      </Button>
+      <CookieManagerDialog open={cookiesOpen} onOpenChange={setCookiesOpen} />
 
       <Button
         variant="ghost"

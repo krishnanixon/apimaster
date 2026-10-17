@@ -45,7 +45,11 @@ export function registerApiStudioHandlers(getMainWindow: () => BrowserWindow | n
     params: schema.record(schema.string({ max: 1_000_000 }), { maxKeys: 1_000 }),
     body: schema.unknown(),
     timeoutMs: schema.optional(schema.number({ integer: true, min: 100, max: 3_600_000 })),
-    auth: schema.optional(schema.unknown())
+    auth: schema.optional(schema.unknown()),
+    network: schema.optional(schema.object({
+      verifySsl: schema.optional(schema.boolean()),
+      disableCookies: schema.optional(schema.boolean())
+    }))
   }, { passthrough: true }) as import('./runtime-schema').RuntimeSchema<ResolvedHttpRequest>] as const, async (_e, request) => {
     try {
       const result = await httpClientService.execute(request)

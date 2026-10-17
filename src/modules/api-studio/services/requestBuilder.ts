@@ -101,7 +101,8 @@ export function resolveRequest(request: ApiRequest, options?: ResolveOptions): R
     params,
     body: wire.method === 'GET' || wire.method === 'HEAD' ? createDefaultBody() : wire.body,
     timeoutMs: options?.timeoutMs ?? wire.timeoutMs,
-    auth: isSignedAuthType(wire.auth.type) ? wire.auth : undefined
+    auth: isSignedAuthType(wire.auth.type) ? wire.auth : undefined,
+    network: wire.network
   }
 }
 
