@@ -50,7 +50,7 @@
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/lang-json": "^6.0.2",
-    "@codemirror/language": "^6.12.4",
+    "@codemirror/language": "^6.13.1",
     "@codemirror/language-data": "^6.5.2",
     "@codemirror/lint": "^6.9.7",
     "@codemirror/state": "^6.7.0",
