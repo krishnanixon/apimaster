@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { HardDrive, Rocket, Scale } from 'lucide-react'
 import { AppLogo } from '@/shared/components/AppLogo'
-import { PRODUCT_NAME, PRODUCT_TAGLINE } from '@shared/constants/product'
+import { COMPANY_NAME, PRODUCT_NAME, PRODUCT_TAGLINE } from '@shared/constants/product'
 import {
   TERMS_LAST_UPDATED,
   TERMS_SECTIONS,
@@ -31,10 +31,11 @@ export function AboutPanel() {
   return (
     <SettingsSection>
       <div className="flex flex-wrap items-center gap-4 rounded-xl border border-border/70 bg-gradient-to-br from-primary/10 via-card to-card p-6 shadow-soft">
-        <AppLogo className="h-14 w-14 rounded-xl shadow-soft" />
+        <AppLogo className="h-14 w-14 drop-shadow-sm" />
         <div className="min-w-0 flex-1">
           <h3 className="text-lg font-semibold tracking-tight">{PRODUCT_NAME}</h3>
           <p className="text-sm text-muted-foreground">{PRODUCT_TAGLINE}</p>
+          <p className="mt-1 text-xs text-muted-foreground/80">A product of {COMPANY_NAME}</p>
         </div>
         <span className="rounded-full border border-border/70 bg-background px-2.5 py-1 font-mono text-[11px] text-muted-foreground">
           v1.0.0

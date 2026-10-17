@@ -26,7 +26,7 @@ const FORMAT_META: Record<
     dialogTitle: 'Export OpenAPI Spec'
   },
   native: {
-    extension: 'apimaster.json',
+    extension: 'shurikly.json',
     mime: 'application/json',
     filterName: `${PRODUCT_NAME} Collection`,
     dialogTitle: `Export ${PRODUCT_NAME} Collection`

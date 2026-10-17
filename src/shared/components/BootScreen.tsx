@@ -20,7 +20,7 @@ export function BootScreen({ message = 'Loading…', className }: BootScreenProp
       aria-busy="true"
     >
       <div className="boot-brand flex flex-col items-center gap-3">
-        <AppLogo className="boot-logo h-12 w-12 rounded-[12px] shadow-sm" />
+        <AppLogo className="boot-logo h-12 w-12" />
         <p className="boot-title m-0 text-[15px] font-semibold tracking-tight text-foreground">
           {PRODUCT_NAME}
         </p>

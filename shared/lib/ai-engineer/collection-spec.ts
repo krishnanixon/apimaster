@@ -51,7 +51,7 @@ function endpointFromRequest(request: ApiRequest, collection: ApiCollection): Ap
         required: false,
         schemaType: 'string'
       })),
-    ...request.pathParams
+    ...(request.pathParams ?? [])
       .filter((p) => p.enabled && p.key.trim())
       .map((p) => ({
         name: p.key,

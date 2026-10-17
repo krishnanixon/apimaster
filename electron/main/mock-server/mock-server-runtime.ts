@@ -1,5 +1,6 @@
 import http, { type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { v4 as uuidv4 } from 'uuid'
+import { MOCK_RESPONSE_HEADER, MOCK_RESPONSE_QUERY } from '@shared/types/mock-server'
 import type {
   MockHttpMethod,
   MockRequestLog,
@@ -15,7 +16,7 @@ import {
   type MockTemplateContext
 } from '@shared/lib/mock-server/templates'
 import { defaultContentTypeForBody, validateJsonBody } from '@shared/lib/mock-server/validation'
-import { pickActiveResponse } from '@shared/lib/mock-server/defaults'
+import { selectMockResponse } from '@shared/lib/mock-server/defaults'
 import { logger } from '../infra/logger.service'
 
 const MAX_LOG_ENTRIES = 500
@@ -57,7 +58,11 @@ function buildCorsHeaders(server: MockServer, req: IncomingMessage): Record<stri
   const headers: Record<string, string> = {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Methods': server.cors.allowedMethods,
-    'Access-Control-Allow-Headers': server.cors.allowedHeaders
+    // Browsers must be allowed to send (and read) the response-selection header.
+    'Access-Control-Allow-Headers': server.cors.allowedHeaders.toLowerCase().includes(MOCK_RESPONSE_HEADER)
+      ? server.cors.allowedHeaders
+      : [server.cors.allowedHeaders, 'X-Mock-Response'].filter((h) => h.trim()).join(', '),
+    'Access-Control-Expose-Headers': 'X-Mock-Response, X-Mock-Server'
   }
   if (server.cors.allowCredentials) {
     headers['Access-Control-Allow-Credentials'] = 'true'
@@ -98,6 +103,8 @@ export class MockServerRuntime {
   private server: Server | null = null
   private config: MockServer
   private routeTable: MockRouteTable
+  /** Per-route request counters for `sequential` response mode. */
+  private sequences = new Map<string, number>()
   state: MockRuntimeState = { status: 'stopped', logs: [] }
 
   constructor(config: MockServer) {
@@ -112,6 +119,7 @@ export class MockServerRuntime {
   updateConfig(config: MockServer): void {
     this.config = config
     this.routeTable = new MockRouteTable(config.routes)
+    this.sequences.clear()
   }
 
   private pushLog(entry: MockRequestLog): void {
@@ -133,6 +141,7 @@ export class MockServerRuntime {
     if (this.state.status === 'running' || this.state.status === 'starting') return
     this.state = { status: 'starting', logs: this.state.logs }
     this.routeTable = new MockRouteTable(this.config.routes)
+    this.sequences.clear()
 
     await new Promise<void>((resolve, reject) => {
       const httpServer = http.createServer((req, res) => {
@@ -247,11 +256,35 @@ export class MockServerRuntime {
         return
       }
 
-      const response = pickActiveResponse(matched.route)
-      if (!response || !response.enabled) {
-        jsonError(res, 500, { error: 'No active mock response configured' }, corsHeaders)
+      const override = req.headers[MOCK_RESPONSE_HEADER]
+      const overrideValue = (Array.isArray(override) ? override[0] : override) ?? query[MOCK_RESPONSE_QUERY]
+      delete query[MOCK_RESPONSE_QUERY]
+      const sequence = this.sequences.get(matched.route.id) ?? 0
+      const selection = selectMockResponse(matched.route, { override: overrideValue, sequence })
+      if (!selection.ok) {
+        const status = selection.reason === 'override-not-found' ? 400 : 500
+        const payload =
+          selection.reason === 'override-not-found'
+            ? {
+                error: 'Unknown mock response',
+                requested: selection.requested,
+                available: selection.available
+              }
+            : { error: 'No enabled mock response configured for this route' }
+        jsonError(res, status, payload, corsHeaders)
+        this.pushLog({
+          id: uuidv4(),
+          timestamp: new Date().toISOString(),
+          method,
+          path: normalizedPath,
+          status,
+          durationMs: Date.now() - started,
+          responseSize: 0
+        })
         return
       }
+      if (!overrideValue) this.sequences.set(matched.route.id, sequence + 1)
+      const response = selection.response
 
       const templateCtx: MockTemplateContext = {
         params: matched.params,
@@ -263,10 +296,7 @@ export class MockServerRuntime {
         host: req.headers.host ?? `${this.config.host}:${this.config.port}`
       }
 
-      const templatedBody =
-        response.bodyType === 'json'
-          ? applyMockTemplates(response.body, templateCtx)
-          : applyMockTemplates(response.body, templateCtx)
+      const templatedBody = response.bodyType === 'binary' ? response.body : applyMockTemplates(response.body, templateCtx)
 
       const mockResponse: MockResponse = {
         ...response,
@@ -279,7 +309,8 @@ export class MockServerRuntime {
       const resolved = resolveResponseBody(mockResponse)
       const outHeaders: Record<string, string> = {
         ...corsHeaders,
-        'X-Mock-Server': 'APIMaster',
+        'X-Mock-Server': 'Shurikly',
+        'X-Mock-Response': encodeURIComponent(response.name),
         ...response.headers
       }
       const defaultCt = defaultContentTypeForBody(response.bodyType)
@@ -299,7 +330,8 @@ export class MockServerRuntime {
         path: normalizedPath,
         status: response.status,
         durationMs: Date.now() - started,
-        responseSize: bodyBuffer.length
+        responseSize: bodyBuffer.length,
+        responseName: response.name
       })
     } catch (e) {
       logger.error(

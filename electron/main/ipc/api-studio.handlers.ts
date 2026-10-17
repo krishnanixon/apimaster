@@ -24,6 +24,7 @@ import { scriptRunnerService } from '../api-studio/script-runner.service'
 import { oauth2Service } from '../api-studio/oauth2.service'
 import { apiStudioAIService } from '../api-studio/api-studio-ai.service'
 import { logger } from '../infra/logger.service'
+import { activityRepository } from '../repositories/activity.repository'
 import { ipcSchemas, schema, validatedHandle } from './runtime-schema'
 
 function success<T>(data?: T): IpcResult<T> {
@@ -47,7 +48,9 @@ export function registerApiStudioHandlers(getMainWindow: () => BrowserWindow | n
     auth: schema.optional(schema.unknown())
   }, { passthrough: true }) as import('./runtime-schema').RuntimeSchema<ResolvedHttpRequest>] as const, async (_e, request) => {
     try {
-      return success(await httpClientService.execute(request))
+      const result = await httpClientService.execute(request)
+      activityRepository.record('request')
+      return success(result)
     } catch (e) {
       return failure(e instanceof Error ? e.message : 'Request failed')
     }
@@ -58,17 +61,19 @@ export function registerApiStudioHandlers(getMainWindow: () => BrowserWindow | n
     return success()
   }, 'ApiStudioIPC')
 
-  ipcMain.handle(IPC_CHANNELS.API_STUDIO_RUN_TESTS, (_e, input: RunApiTestsInput) => {
+  ipcMain.handle(IPC_CHANNELS.API_STUDIO_RUN_TESTS, async (_e, input: RunApiTestsInput) => {
     try {
-      return success(scriptRunnerService.runTests(input))
+      const run = await scriptRunnerService.runTests(input)
+      if (run.results.length) activityRepository.record('test')
+      return success(run)
     } catch (e) {
       return failure(e instanceof Error ? e.message : 'Failed to run tests')
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.API_STUDIO_RUN_PRE_REQUEST, (_e, input: RunPreRequestScriptInput) => {
+  ipcMain.handle(IPC_CHANNELS.API_STUDIO_RUN_PRE_REQUEST, async (_e, input: RunPreRequestScriptInput) => {
     try {
-      return success(scriptRunnerService.runPreRequest(input))
+      return success(await scriptRunnerService.runPreRequest(input))
     } catch (e) {
       return failure(e instanceof Error ? e.message : 'Failed to run pre-request script')
     }

@@ -1,6 +1,6 @@
 # AI Engineer (Phase 1)
 
-AI Engineer turns APIMaster into an API analysis and testing workflow while reusing the existing HTTP client, environments, and collections.
+AI Engineer turns Shurikly into an API analysis and testing workflow while reusing the existing HTTP client, environments, and collections.
 
 ## What works without an AI provider
 

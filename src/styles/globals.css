@@ -226,15 +226,12 @@ html[data-platform='mac']:not([data-fullscreen='true']) .mac-window-chrome {
   padding-left: 4.85rem;
 }
 
-/* Regular workbench chrome needs room for hiddenInset traffic lights. Immersive
-   full-display views own the whole viewport and must not inherit that spacer. */
-html[data-platform='mac'][data-fullscreen='true']:not([data-immersive='true']) #root {
-  padding-top: 28px;
-  box-sizing: border-box;
-}
-
-html[data-platform='mac'][data-fullscreen='true'][data-immersive='true'] #root {
-  padding-top: 0;
+/* In macOS full screen the traffic lights only appear inside the system's
+   slide-down menu bar, which overlays the window — so the title bar needs no
+   top spacer and no left inset (a spacer shows up as an empty band). */
+html[data-platform='mac'][data-fullscreen='true'] .workbench-titlebar,
+html[data-platform='mac'][data-fullscreen='true'] .mac-window-chrome {
+  padding-left: 0.75rem;
 }
 
 html[data-platform='mac'] .doc-running-header {

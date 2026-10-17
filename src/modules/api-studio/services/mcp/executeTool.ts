@@ -179,6 +179,21 @@ export async function executeMcpTool(
       const { collection, request } = requireRequest(args.collectionId, args.requestId)
       return presentRequest(request, collection, options)
     }
+    case 'get_request_source': {
+      const args = raw as McpToolArgs<'get_request_source'>
+      const { collection, request } = requireRequest(args.collectionId, args.requestId)
+      if (!options.allowSourceCode) {
+        throw new ToolError('Reading source code is off. The user can turn on "Share scanned source code" in Shurikly Settings → MCP.')
+      }
+      const rootPath = collection.source?.kind === 'code-scanner' ? collection.source.rootPath : null
+      const locations = request.scan?.sources ?? []
+      if (!rootPath || locations.length === 0) {
+        throw new ToolError('This request was not created by the Code Scanner (or was created before it recorded source locations); re-scan the project to add them.')
+      }
+      const res = await window.electronAPI.codeScanner.readSource({ rootPath, locations })
+      if (!res.success || !res.data) throw new ToolError(res.error ?? 'Could not read the source')
+      return { method: request.method, url: request.url, rootPath, snippets: res.data }
+    }
     case 'search_requests': {
       const args = raw as McpToolArgs<'search_requests'>
       const query = (args.query ?? '').trim().toLowerCase()
@@ -539,7 +554,7 @@ export async function executeMcpTool(
       let testResults: { name: string; passed: boolean; error?: string }[] = []
       if (request.tests?.trim()) {
         const tests = await window.electronAPI.apiStudio.runTests({ script: request.tests, request, response: result })
-        if (tests.success && tests.data) testResults = tests.data
+        if (tests.success && tests.data) testResults = tests.data.results
       }
       return {
         ...presentExecution(result, { ...options, maxBodyChars: args.maxBodyChars }),

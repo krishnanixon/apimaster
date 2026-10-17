@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Check, ChevronRight } from 'lucide-react'
-import { normalizeSettingsTab, type SettingsTabId } from '@shared/settings'
+import { DEFAULT_SETTINGS_TAB, normalizeSettingsTab, type SettingsTabId } from '@shared/settings'
 import { SETTINGS_GROUPS, getSettingsTabEntry } from '@/features/settings/registry/settings-tabs'
 import { SettingsSidebar } from '@/features/settings/components/SettingsSidebar'
 import { useSettingsStore } from '@/shared/stores/settings.store'
@@ -22,7 +22,7 @@ export function SettingsPageContent({ global }: { global?: boolean }) {
   }, [searchParams])
 
   const setActiveTab = (tab: SettingsTabId) => {
-    setSearchParams(tab === 'ai' ? {} : { tab }, { replace: true })
+    setSearchParams(tab === DEFAULT_SETTINGS_TAB ? {} : { tab }, { replace: true })
   }
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export function SettingsPageContent({ global }: { global?: boolean }) {
         {entry && (
           <header className="sticky top-0 z-10 border-b border-border/60 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
             <div className="mx-auto flex max-w-4xl items-center gap-3 px-5 py-4 md:px-8">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-primary/15">
                 <entry.icon className="h-[18px] w-[18px]" />
               </span>
               <div className="min-w-0 flex-1">
@@ -66,6 +66,11 @@ export function SettingsPageContent({ global }: { global?: boolean }) {
                   )}
                 </p>
                 <h2 className="truncate text-base font-semibold tracking-tight">{entry.label}</h2>
+                {entry.description && (
+                  <p className="hidden truncate text-xs text-muted-foreground sm:block">
+                    {entry.description}
+                  </p>
+                )}
               </div>
               <SaveIndicator />
             </div>
@@ -74,7 +79,7 @@ export function SettingsPageContent({ global }: { global?: boolean }) {
 
         <div className="mx-auto max-w-4xl px-5 pb-28 pt-6 md:px-8">
           {entry?.description && (
-            <p className="mb-6 text-sm text-muted-foreground">{entry.description}</p>
+            <p className="mb-6 text-sm text-muted-foreground sm:hidden">{entry.description}</p>
           )}
           <FadeIn key={activeTab}>{Panel ? <Panel global={global} /> : null}</FadeIn>
         </div>

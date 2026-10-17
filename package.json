@@ -1,16 +1,40 @@
 {
-  "name": "apimaster",
+  "name": "shurikly",
   "version": "1.0.0",
-  "description": "APIMaster — the open-source, local-first API client with built-in AI",
+  "description": "Shurikly — the open-source, local-first API client with built-in AI",
+  "keywords": [
+    "api-client",
+    "rest",
+    "graphql",
+    "websocket",
+    "postman-alternative",
+    "mock-server",
+    "mcp",
+    "electron",
+    "local-first",
+    "ai"
+  ],
+  "homepage": "https://github.com/shurikly/shurikly#readme",
+  "bugs": {
+    "url": "https://github.com/shurikly/shurikly/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shurikly/shurikly.git"
+  },
   "main": "./out/main/index.js",
-  "author": "APIMaster",
+  "author": "Wansify Ventures",
   "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "lint": "eslint . --ext .ts,.tsx",
-    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{ts,tsx,json,css,md}\"",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
@@ -32,6 +56,7 @@
     "@codemirror/state": "^6.7.0",
     "@codemirror/view": "^6.43.5",
     "@fontsource/inter": "^5.2.8",
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
     "@lezer/highlight": "^1.2.3",
     "@modelcontextprotocol/sdk": "^1.30.1",
     "@radix-ui/react-context-menu": "^2.3.7",
@@ -52,8 +77,11 @@
     "framer-motion": "^12.42.2",
     "graphql": "^16.11.0",
     "graphql-language-service": "^5.7.0",
+    "ignore": "^5.3.2",
+    "js-yaml": "^4.3.2",
     "lucide-react": "^0.525.0",
     "openai": "^5.8.2",
+    "quickjs-emscripten-core": "0.32.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
@@ -61,12 +89,14 @@
     "react-router-dom": "^7.6.3",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1",
+    "typescript": "^5.9.3",
     "uuid": "^11.1.0",
     "zod": "^4.6.5",
     "zustand": "^5.0.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.0.7",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
@@ -86,14 +116,14 @@
     "prettier": "^3.9.6",
     "prettier-plugin-tailwindcss": "^0.6.13",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.8.3",
     "typescript-eslint": "^8.35.0",
     "vite": "^6.3.5",
     "vitest": "^3.2.4"
   },
   "build": {
-    "appId": "com.apimaster.app",
-    "productName": "APIMaster",
+    "appId": "com.shurikly.app",
+    "productName": "Shurikly",
+    "copyright": "Copyright © 2026 Wansify Ventures",
     "npmRebuild": false,
     "icon": "build/icon.png",
     "directories": {
@@ -102,8 +132,12 @@
     },
     "extraResources": [
       {
-        "from": "public/apimaster.png",
-        "to": "resources/apimaster.png"
+        "from": "public/shurikly.png",
+        "to": "resources/shurikly.png"
+      },
+      {
+        "from": "public/app-icon.png",
+        "to": "resources/app-icon.png"
       },
       {
         "from": "out/main/mcp-stdio.js",
@@ -112,6 +146,11 @@
     ],
     "files": [
       "out/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/quickjs-emscripten-core/**",
+      "node_modules/@jitl/quickjs-ffi-types/**",
+      "node_modules/@jitl/quickjs-wasmfile-release-sync/**"
     ],
     "win": {
       "target": "nsis",
@@ -123,7 +162,7 @@
       "license": "build/license.txt",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "APIMaster"
+      "shortcutName": "Shurikly"
     },
     "mac": {
       "target": "dmg",
@@ -134,6 +173,12 @@
     "linux": {
       "target": "AppImage",
       "icon": "build/icon.png"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "shurikly",
+      "repo": "shurikly",
+      "releaseType": "draft"
     }
   }
 }

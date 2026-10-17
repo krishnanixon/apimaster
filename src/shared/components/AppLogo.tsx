@@ -14,7 +14,9 @@ export function AppLogo({ className, alt = PRODUCT_NAME }: AppLogoProps) {
       src={APP_LOGO_SRC}
       alt={alt}
       decoding="async"
-      className={cn('object-cover', className)}
+      draggable={false}
+      // The PNG carries its own rounded corners and transparency — don't clip it with CSS radii.
+      className={cn('select-none object-contain', className)}
     />
   )
 }

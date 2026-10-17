@@ -29,14 +29,19 @@ async function runPreRequestScript(
   return res.data
 }
 
-async function runTests(request: ApiRequest, response: Awaited<ReturnType<typeof executeResolved>>): Promise<ApiTestResult[]> {
-  if (!request.tests?.trim()) return []
+async function runTests(
+  request: ApiRequest,
+  response: Awaited<ReturnType<typeof executeResolved>>,
+  variables: Record<string, string>
+): Promise<{ results: ApiTestResult[]; variables: Record<string, string> }> {
+  if (!request.tests?.trim()) return { results: [], variables }
   const res = await window.electronAPI.apiStudio.runTests({
     script: request.tests,
     request,
-    response
+    response,
+    variables
   })
-  return res.success && res.data ? res.data : []
+  return res.success && res.data ? { results: res.data.results, variables: res.data.variables ?? variables } : { results: [], variables }
 }
 
 function isRequestFailed(
@@ -157,7 +162,10 @@ export async function runRequestList(
     const reqStarted = performance.now()
     const response = finishExecution(request, await executeResolved(resolved))
     const timeMs = Math.round(performance.now() - reqStarted)
-    const testResults = await runTests(request, response)
+    // Later requests see what the tests saved (a login's token, a created id).
+    const tests = await runTests(request, response, runtimeVariables)
+    runtimeVariables = tests.variables
+    const testResults = tests.results
     const requestFailed = isRequestFailed(response, testResults)
 
     if (requestFailed) failed++

@@ -10,7 +10,9 @@ export interface McpServerConfig {
   token: string
   /** When false, secrets are replaced with a placeholder before reaching Claude. */
   exposeSecrets: boolean
-  /** How the stdio bridge can start APIMaster when it is not running. */
+  /** When true, `get_request_source` may return code from folders the Code Scanner read. */
+  exposeSourceCode: boolean
+  /** How the stdio bridge can start Shurikly when it is not running. */
   launch?: { command: string; args: string[] }
 }
 
@@ -18,6 +20,7 @@ export interface McpServerConfigPatch {
   enabled?: boolean
   port?: number
   exposeSecrets?: boolean
+  exposeSourceCode?: boolean
 }
 
 export interface McpLaunchSpec {
@@ -33,8 +36,9 @@ export interface McpServerStatus {
   url: string
   token: string
   exposeSecrets: boolean
+  exposeSourceCode: boolean
   error: string | null
-  /** True once the APIMaster window has registered the tool bridge. */
+  /** True once the Shurikly window has registered the tool bridge. */
   rendererReady: boolean
   claudeDesktop: {
     configPath: string
@@ -52,7 +56,7 @@ export interface McpInvokeMessage {
   id: string
   tool: McpToolName
   args: Record<string, unknown>
-  options: { redactSecrets: boolean }
+  options: { redactSecrets: boolean; allowSourceCode: boolean }
 }
 
 /** renderer → main: tool result. */

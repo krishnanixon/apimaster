@@ -34,8 +34,6 @@ interface AiEngineerState {
   activeRun: AiTestRun | null
   busy: boolean
   progress: { current: number; total: number; label: string } | null
-  selectedAnalysisId: string | null
-  selectedSuiteId: string | null
   loadAll: () => Promise<void>
   updateConfig: (patch: Partial<AiEngineerConfig>) => Promise<void>
   analyzeCollection: (collection: ApiCollection) => Promise<ApiAnalysisRecord | null>

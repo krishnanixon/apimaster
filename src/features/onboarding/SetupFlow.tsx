@@ -245,9 +245,7 @@ function WelcomeStep({ onContinue }: { onContinue: () => void }) {
           aria-hidden
           className="absolute inset-0 -z-10 scale-150 rounded-full bg-primary/25 blur-2xl"
         />
-        <div className="flex h-20 w-20 items-center justify-center rounded-[1.4rem] border border-border/70 bg-card shadow-float">
-          <AppLogo className="h-12 w-12 rounded-xl" />
-        </div>
+        <AppLogo className="h-20 w-20 drop-shadow-xl" />
       </motion.div>
 
       <motion.div

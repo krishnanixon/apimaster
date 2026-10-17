@@ -143,7 +143,7 @@ export function ThemeStudio() {
     const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
     const link = document.createElement('a')
     link.href = url
-    link.download = 'apimaster-theme.json'
+    link.download = 'shurikly-theme.json'
     link.click()
     URL.revokeObjectURL(url)
     toast.success('Theme exported')

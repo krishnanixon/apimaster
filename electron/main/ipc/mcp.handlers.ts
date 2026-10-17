@@ -25,7 +25,10 @@ export function registerMcpHandlers(getMainWindow: () => BrowserWindow | null): 
       if (!patch || typeof patch !== 'object') return failure('Invalid MCP settings')
       if (patch.port !== undefined) assertMcpPort(patch.port)
       if (patch.enabled !== undefined && typeof patch.enabled !== 'boolean') return failure('Invalid MCP settings')
-      if (patch.exposeSecrets !== undefined && typeof patch.exposeSecrets !== 'boolean') {
+      if (
+        (patch.exposeSecrets !== undefined && typeof patch.exposeSecrets !== 'boolean') ||
+        (patch.exposeSourceCode !== undefined && typeof patch.exposeSourceCode !== 'boolean')
+      ) {
         return failure('Invalid MCP settings')
       }
       mcpManager.update(patch)

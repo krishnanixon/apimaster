@@ -86,7 +86,7 @@ function shouldReveal(tool: McpToolName, args: Record<string, unknown>): boolean
   return false
 }
 
-function createSession(version: string, exposeSecrets: () => boolean): McpServer {
+function createSession(version: string, exposeSecrets: () => boolean, exposeSourceCode: () => boolean): McpServer {
   const server = new McpServer(
     { name: MCP_SERVER_NAME, version },
     { instructions: MCP_SERVER_INSTRUCTIONS }
@@ -104,7 +104,7 @@ function createSession(version: string, exposeSecrets: () => boolean): McpServer
       async (args: Record<string, unknown> | undefined) => {
         const record = args ?? {}
         if (shouldReveal(name, record)) navigateMainWindow('/')
-        const result = await mcpToolBridge.invoke(name, record, { redactSecrets: !exposeSecrets() })
+        const result = await mcpToolBridge.invoke(name, record, { redactSecrets: !exposeSecrets(), allowSourceCode: exposeSourceCode() })
         if (!result.ok) {
           return {
             isError: true,
@@ -125,6 +125,7 @@ export function startMcpHttpServer(options: {
   version: string
   getToken: () => string
   exposeSecrets: () => boolean
+  exposeSourceCode: () => boolean
   rendererReady: () => boolean
 }): Promise<McpHttpServer> {
   const server: Server = createServer((req, res) => {
@@ -166,7 +167,7 @@ export function startMcpHttpServer(options: {
       }
 
       const parsedBody = await readBody(req)
-      const mcp = createSession(options.version, options.exposeSecrets)
+      const mcp = createSession(options.version, options.exposeSecrets, options.exposeSourceCode)
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,

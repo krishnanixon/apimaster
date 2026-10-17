@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Code2, Columns2, Copy, MoreHorizontal, Pencil, Rows2, Save, Trash2 } from 'lucide-react'
+import { ChevronRight, Code2, Columns2, Copy, MoreHorizontal, Pencil, Rows2, Save, Trash2 } from 'lucide-react'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
 import {
@@ -23,6 +23,9 @@ interface ApiStudioToolbarProps {
 
 export function ApiStudioToolbar({ tabId, onSave, onClear, onViewCode }: ApiStudioToolbarProps) {
   const tab = useApiStudioStore((s) => s.tabs.find((t) => t.id === tabId))
+  const collectionName = useApiStudioStore(
+    (s) => s.collections.find((c) => c.id === tab?.collectionId)?.name
+  )
   const updateDraft = useApiStudioStore((s) => s.updateDraft)
   const setRequestView = useApiStudioStore((s) => s.setRequestView)
   const setResponseView = useApiStudioStore((s) => s.setResponseView)
@@ -88,7 +91,13 @@ export function ApiStudioToolbar({ tabId, onSave, onClear, onViewCode }: ApiStud
   }
 
   return (
-    <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border/60 bg-muted/15 px-2">
+    <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-background px-3">
+      {collectionName && (
+        <>
+          <span className="max-w-[40%] shrink-0 truncate text-[13px] text-muted-foreground">{collectionName}</span>
+          <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/60" aria-hidden />
+        </>
+      )}
       {editingName ? (
         <Input
           ref={nameInputRef}
@@ -104,7 +113,7 @@ export function ApiStudioToolbar({ tabId, onSave, onClear, onViewCode }: ApiStud
               cancelRename()
             }
           }}
-          className="h-6 min-w-0 flex-1 px-1.5 text-xs"
+          className="h-7 min-w-0 flex-1 px-1.5 text-[13px]"
           placeholder="Request name"
           aria-label="Request name"
         />
@@ -116,7 +125,7 @@ export function ApiStudioToolbar({ tabId, onSave, onClear, onViewCode }: ApiStud
           className="group flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-left transition-colors hover:bg-muted/60"
           title="Click to rename"
         >
-          <span className="min-w-0 truncate text-xs text-muted-foreground group-hover:text-foreground">
+          <span className="min-w-0 truncate text-[13px] font-medium text-foreground">
             {displayName}
             {isDirty && <span className="ml-1 text-foreground">•</span>}
           </span>

@@ -19,7 +19,7 @@ function setBootMessage(message: string): void {
     el.textContent = message
     return
   }
-  rootEl.innerHTML = `<div class="boot-screen" role="status" aria-live="polite" aria-busy="true"><div class="boot-brand"><img class="boot-logo" src="./apimaster.png" alt="${PRODUCT_NAME}" width="48" height="48" /><p class="boot-title">${PRODUCT_NAME}</p></div><div class="boot-progress" aria-hidden="true"></div><p class="boot-message">${message}</p></div>`
+  rootEl.innerHTML = `<div class="boot-screen" role="status" aria-live="polite" aria-busy="true"><div class="boot-brand"><img class="boot-logo" src="./shurikly.png" alt="${PRODUCT_NAME}" width="48" height="48" /><p class="boot-title">${PRODUCT_NAME}</p></div><div class="boot-progress" aria-hidden="true"></div><p class="boot-message">${message}</p></div>`
 }
 
 function renderFatal(error: unknown): void {

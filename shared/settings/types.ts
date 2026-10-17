@@ -1,5 +1,5 @@
 /** Settings tabs shown in the global Settings UI */
-export type SettingsTabId = 'appearance' | 'ai' | 'mcp' | 'usage' | 'about'
+export type SettingsTabId = 'profile' | 'appearance' | 'ai' | 'mcp' | 'usage' | 'about'
 
 export type SettingsStorageKind = 'localStorage' | 'userData' | 'ipc'
 

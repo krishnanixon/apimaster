@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
-import type { AiGeneratedTest, AiTestEvidence, AiTestResult, AiTestRun } from '@shared/types/ai-engineer'
+import type { AiGeneratedTest, AiTestEvidence, AiTestRun } from '@shared/types/ai-engineer'
 import type { ApiCollection, ApiRequest } from '@shared/types/api-studio'
 import { runAssertions } from '@shared/lib/ai-engineer/assertions'
 import { canAutoRun } from '@shared/lib/ai-engineer/execution-policy'
@@ -138,7 +138,6 @@ export async function runAiTestSuite(options: {
         response.error && !response.aborted ? 'error' : failed > 0 || !test.expectedStatus.includes(response.status) ? 'failed' : 'passed'
 
       if (status === 'passed') run.passed++
-      else if (status === 'skipped') run.skipped++
       else if (status === 'error') run.errors++
       else run.failed++
 

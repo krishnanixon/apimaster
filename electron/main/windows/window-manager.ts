@@ -1,7 +1,7 @@
 import { app, BrowserWindow, nativeTheme, shell } from 'electron'
 import { existsSync } from 'fs'
 import { join } from 'path'
-import { PRODUCT_LOGO_FILE, PRODUCT_NAME } from '@shared/constants/product'
+import { PRODUCT_APP_ICON_FILE, PRODUCT_NAME } from '@shared/constants/product'
 import { IPC_CHANNELS } from '@shared/ipc/channels'
 
 const isDev = !app.isPackaged
@@ -54,6 +54,8 @@ export function createMainWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: true,
+      // Enables Chromium's built-in PDF viewer for PDF response previews (no third-party plugins exist in Electron).
+      plugins: true,
       backgroundThrottling: false
     }
   })
@@ -106,8 +108,8 @@ async function loadRenderer(win: BrowserWindow): Promise<void> {
 
 export function getAppIconPath(): string | undefined {
   const candidates = app.isPackaged
-    ? [join(process.resourcesPath, `resources/${PRODUCT_LOGO_FILE}`)]
-    : [join(__dirname, `../../public/${PRODUCT_LOGO_FILE}`), join(process.cwd(), `public/${PRODUCT_LOGO_FILE}`)]
+    ? [join(process.resourcesPath, `resources/${PRODUCT_APP_ICON_FILE}`)]
+    : [join(__dirname, `../../public/${PRODUCT_APP_ICON_FILE}`), join(process.cwd(), `public/${PRODUCT_APP_ICON_FILE}`)]
   return candidates.find((item) => existsSync(item))
 }
 
@@ -119,7 +121,8 @@ function macTitleBarOptions(): Electron.BrowserWindowConstructorOptions {
   if (!isMac()) return {}
   return {
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 11 }
+    // Vertically centred on the 38px title bar (AppShell): 13 + 12px button / 2 = 19.
+    trafficLightPosition: { x: 16, y: 13 }
   }
 }
 

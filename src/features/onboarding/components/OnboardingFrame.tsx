@@ -29,8 +29,9 @@ export function OnboardingFrame({ meta, hideBrand = false, children }: Onboardin
 
       <header
         className={cn(
-          'drag-region relative z-10 flex shrink-0 items-center gap-2 px-4',
-          mac ? 'h-[38px] pl-[84px]' : 'h-11'
+          // `mac-window-chrome` gets the traffic-light inset from globals.css (dropped in full screen).
+          'mac-window-chrome drag-region relative z-10 flex shrink-0 items-center gap-2 px-4',
+          mac ? 'h-[38px]' : 'h-11'
         )}
       >
         <div
@@ -39,7 +40,7 @@ export function OnboardingFrame({ meta, hideBrand = false, children }: Onboardin
             hideBrand && 'opacity-0'
           )}
         >
-          <AppLogo className="h-5 w-5 rounded-[5px]" />
+          <AppLogo className="h-5 w-5" />
           <span className="truncate text-[13px] font-semibold">{PRODUCT_NAME}</span>
         </div>
         <div className="ml-auto text-[11px] tabular-nums text-muted-foreground">{meta}</div>

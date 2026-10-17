@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from 'uuid'
 import type { HttpMethod } from '../../types/api-studio'
 import type { ApiSpec, ApiSpecEndpoint, ApiSpecParameter, ApiSpecRequestBody, ApiSpecResponse } from '../../types/ai-engineer'
+import { resolveRef, schemaExample } from '../schema-example'
+import { fromJsonSchema } from '../body-schema'
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options'])
 
@@ -16,41 +18,101 @@ function schemaSummary(schema: unknown): string | undefined {
   return undefined
 }
 
-function parseParameters(raw: unknown): ApiSpecParameter[] {
-  if (!Array.isArray(raw)) return []
-  const out: ApiSpecParameter[] = []
-  for (const item of raw) {
-    if (!isRecord(item) || typeof item.name !== 'string' || typeof item.in !== 'string') continue
-    if (!['path', 'query', 'header', 'cookie'].includes(item.in)) continue
-    out.push({
-      name: item.name,
-      in: item.in as ApiSpecParameter['in'],
-      required: Boolean(item.required),
-      schemaType: isRecord(item.schema) ? schemaSummary(item.schema) : undefined,
-      description: typeof item.description === 'string' ? item.description : undefined
-    })
-  }
-  return out
+function paramExample(item: Record<string, unknown>, root: unknown): string | undefined {
+  const value = item.example !== undefined ? item.example : schemaExample(item.schema ?? item, root)
+  return value === undefined || value === null || typeof value === 'object' ? undefined : String(value)
 }
 
-function parseRequestBody(raw: unknown): ApiSpecRequestBody | undefined {
-  if (!isRecord(raw)) return undefined
-  const content = isRecord(raw.content) ? raw.content : {}
+/**
+ * Path-item and operation parameters merged (the operation wins for the same name + location),
+ * with `$ref`s resolved. Swagger 2 `in: body` / `formData` are returned separately as the body.
+ */
+function parseParameters(
+  pathLevel: unknown,
+  operationLevel: unknown,
+  root: unknown
+): { parameters: ApiSpecParameter[]; body: Record<string, unknown>[]; form: Record<string, unknown>[] } {
+  const merged = new Map<string, Record<string, unknown>>()
+  for (const list of [pathLevel, operationLevel]) {
+    if (!Array.isArray(list)) continue
+    for (const raw of list) {
+      const item = resolveRef(raw, root)
+      if (!isRecord(item) || typeof item.name !== 'string' || typeof item.in !== 'string') continue
+      merged.set(`${item.in}:${item.name}`, item)
+    }
+  }
+  const parameters: ApiSpecParameter[] = []
+  const body: Record<string, unknown>[] = []
+  const form: Record<string, unknown>[] = []
+  for (const item of merged.values()) {
+    if (item.in === 'body') body.push(item)
+    else if (item.in === 'formData') form.push(item)
+    else if (['path', 'query', 'header', 'cookie'].includes(item.in as string)) {
+      parameters.push({
+        name: item.name as string,
+        in: item.in as ApiSpecParameter['in'],
+        required: Boolean(item.required),
+        schemaType: schemaSummary(isRecord(item.schema) ? item.schema : item),
+        description: typeof item.description === 'string' ? item.description : undefined,
+        example: paramExample(item, root)
+      })
+    }
+  }
+  return { parameters, body, form }
+}
+
+function parseRequestBody(raw: unknown, root: unknown): ApiSpecRequestBody | undefined {
+  const body = resolveRef(raw, root)
+  if (!isRecord(body)) return undefined
+  const content = isRecord(body.content) ? body.content : {}
   const contentTypes = Object.keys(content)
   let example: unknown
   let schemaSummaryText: string | undefined
-  for (const ct of contentTypes) {
+  let schema: ApiSpecRequestBody['schema']
+  // Prefer JSON when an operation accepts several media types.
+  const ordered = [...contentTypes].sort((a, b) => Number(b.includes('json')) - Number(a.includes('json')))
+  for (const ct of ordered) {
     const media = content[ct]
     if (!isRecord(media)) continue
-    if (media.example !== undefined) example = media.example
-    if (isRecord(media.schema)) schemaSummaryText = schemaSummary(media.schema)
+    if (example === undefined && media.example !== undefined) example = media.example
+    if (example === undefined && isRecord(media.examples)) {
+      const first = resolveRef(Object.values(media.examples)[0], root)
+      if (isRecord(first) && first.value !== undefined) example = first.value
+    }
+    if (media.schema !== undefined) {
+      schemaSummaryText ??= schemaSummary(resolveRef(media.schema, root))
+      schema ??= fromJsonSchema(media.schema, root)
+      if (example === undefined) example = schemaExample(media.schema, root)
+    }
   }
-  return {
-    required: Boolean(raw.required),
-    contentTypes,
-    schemaSummary: schemaSummaryText,
-    example
+  return { required: Boolean(body.required), contentTypes, schemaSummary: schemaSummaryText, example, ...(schema ? { schema } : {}) }
+}
+
+/** Swagger 2: the body is a parameter (`in: body`) or a set of `formData` fields. */
+function swagger2Body(
+  body: Record<string, unknown>[],
+  form: Record<string, unknown>[],
+  consumes: unknown,
+  root: unknown
+): ApiSpecRequestBody | undefined {
+  const types = Array.isArray(consumes) ? consumes.filter((c): c is string => typeof c === 'string') : []
+  if (body[0]) {
+    return {
+      required: Boolean(body[0].required),
+      contentTypes: types.length ? types : ['application/json'],
+      schemaSummary: schemaSummary(resolveRef(body[0].schema, root)),
+      example: schemaExample(body[0].schema, root),
+      schema: fromJsonSchema(body[0].schema, root)
+    }
   }
+  if (form.length) {
+    return {
+      required: form.some((f) => f.required),
+      contentTypes: types.length ? types : ['application/x-www-form-urlencoded'],
+      example: Object.fromEntries(form.map((f) => [f.name as string, paramExample(f, root) ?? '']))
+    }
+  }
+  return undefined
 }
 
 function parseResponses(raw: unknown): ApiSpecResponse[] {
@@ -89,6 +151,7 @@ export function parseOpenApiDocument(json: string, name = 'Imported API'): ApiSp
       if (!HTTP_METHODS.has(method)) continue
       if (!isRecord(operation)) continue
       const httpMethod = method.toUpperCase() as HttpMethod
+      const params = parseParameters(pathItem.parameters, operation.parameters, doc)
       endpoints.push({
         id: uuidv4(),
         method: httpMethod,
@@ -96,8 +159,10 @@ export function parseOpenApiDocument(json: string, name = 'Imported API'): ApiSp
         operationId: typeof operation.operationId === 'string' ? operation.operationId : undefined,
         summary: typeof operation.summary === 'string' ? operation.summary : undefined,
         description: typeof operation.description === 'string' ? operation.description : undefined,
-        parameters: parseParameters(operation.parameters ?? pathItem.parameters),
-        requestBody: parseRequestBody(operation.requestBody),
+        parameters: params.parameters,
+        requestBody:
+          parseRequestBody(operation.requestBody, doc) ??
+          swagger2Body(params.body, params.form, operation.consumes ?? doc.consumes, doc),
         responses: parseResponses(operation.responses),
         securityRequired: hasSecurity(operation, rootSecurity),
         tags: Array.isArray(operation.tags) ? operation.tags.filter((t): t is string => typeof t === 'string') : []

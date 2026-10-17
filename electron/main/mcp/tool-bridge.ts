@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc/channels'
-import type { McpInvokeResult } from '@shared/mcp/types'
+import type { McpInvokeMessage, McpInvokeResult } from '@shared/mcp/types'
 import type { McpToolName } from '@shared/mcp/tools'
 
 const DEFAULT_TIMEOUT_MS = 30_000
@@ -64,7 +64,7 @@ export class McpToolBridge {
   async invoke(
     tool: McpToolName,
     args: Record<string, unknown>,
-    options: { redactSecrets: boolean }
+    options: McpInvokeMessage['options']
   ): Promise<McpInvokeResult> {
     const id = randomUUID()
     try {
@@ -72,19 +72,19 @@ export class McpToolBridge {
       return await new Promise<McpInvokeResult>((resolve) => {
         const timer = setTimeout(() => {
           this.pending.delete(id)
-          resolve({ id, ok: false, error: 'APIMaster took too long to answer. Try again with the window open.' })
+          resolve({ id, ok: false, error: 'Shurikly took too long to answer. Try again with the window open.' })
         }, timeoutFor(tool))
         this.pending.set(id, { resolve, timer })
         if (win.isDestroyed() || win.webContents.isDestroyed()) {
           clearTimeout(timer)
           this.pending.delete(id)
-          resolve({ id, ok: false, error: 'APIMaster window is not open.' })
+          resolve({ id, ok: false, error: 'Shurikly window is not open.' })
           return
         }
         win.webContents.send(IPC_CHANNELS.MCP_INVOKE, { id, tool, args, options })
       })
     } catch (error) {
-      return { id, ok: false, error: error instanceof Error ? error.message : 'APIMaster is not ready.' }
+      return { id, ok: false, error: error instanceof Error ? error.message : 'Shurikly is not ready.' }
     }
   }
 
@@ -101,7 +101,7 @@ export class McpToolBridge {
       if (win && this.rendererReady && !win.webContents.isDestroyed()) return win
       await delay(100)
     }
-    throw new Error('APIMaster is not ready. Open the app window and try again.')
+    throw new Error('Shurikly is not ready. Open the app window and try again.')
   }
 }
 

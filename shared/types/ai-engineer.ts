@@ -30,6 +30,26 @@ export interface ApiSpecParameter {
   required: boolean
   schemaType?: string
   description?: string
+  /** Example value (from a spec or AI enrichment), used to prefill the request. */
+  example?: string
+}
+
+/**
+ * The validation rules a request body is known to have — a small, resolved JSON Schema subset
+ * (no `$ref`s). Read from OpenAPI documents and validators in code (zod, joi, class-validator, …).
+ */
+export interface BodySchema {
+  type?: 'object' | 'array' | 'string' | 'number' | 'integer' | 'boolean'
+  properties?: Record<string, BodySchema>
+  /** Fields that must be present; omitted when the source doesn't say. */
+  required?: string[]
+  items?: BodySchema
+  format?: string
+  enum?: unknown[]
+  minLength?: number
+  maxLength?: number
+  minimum?: number
+  maximum?: number
 }
 
 export interface ApiSpecRequestBody {
@@ -37,6 +57,8 @@ export interface ApiSpecRequestBody {
   contentTypes: string[]
   schemaSummary?: string
   example?: unknown
+  /** Validation rules, when the scanner or spec knows them (used to generate validation tests). */
+  schema?: BodySchema
 }
 
 export interface ApiSpecResponse {

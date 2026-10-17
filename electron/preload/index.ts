@@ -2,6 +2,14 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc/channels'
 import type { ElectronAPI } from '@shared/ipc/api'
 
+type WindowChromeState = { fullscreen: boolean; maximized: boolean }
+
+/** Latest window state from main, cached from preload start so late subscribers don't miss it. */
+let lastWindowChrome: WindowChromeState | null = null
+ipcRenderer.on(IPC_CHANNELS.APP_WINDOW_CHROME, (_: Electron.IpcRendererEvent, state: WindowChromeState) => {
+  lastWindowChrome = state
+})
+
 const api: ElectronAPI = {
   app: {
     getVersion: () => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION),
@@ -32,12 +40,22 @@ const api: ElectronAPI = {
         state: { fullscreen: boolean; maximized: boolean }
       ) => callback(state)
       ipcRenderer.on(IPC_CHANNELS.APP_WINDOW_CHROME, handler)
+      // Replay the state sent before React subscribed (e.g. relaunching in full screen).
+      if (lastWindowChrome) callback(lastWindowChrome)
       return () => ipcRenderer.removeListener(IPC_CHANNELS.APP_WINDOW_CHROME, handler)
     }
   },
   settings: {
     get: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
     update: (data) => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_UPDATE, data)
+  },
+  profile: {
+    get: () => ipcRenderer.invoke(IPC_CHANNELS.PROFILE_GET),
+    update: (patch) => ipcRenderer.invoke(IPC_CHANNELS.PROFILE_UPDATE, patch)
+  },
+  activity: {
+    get: () => ipcRenderer.invoke(IPC_CHANNELS.ACTIVITY_GET),
+    clear: () => ipcRenderer.invoke(IPC_CHANNELS.ACTIVITY_CLEAR)
   },
   apiKey: {
     set: (key: string) => ipcRenderer.invoke(IPC_CHANNELS.API_KEY_SET, key),
@@ -147,6 +165,34 @@ const api: ElectronAPI = {
     getRun: (id) => ipcRenderer.invoke(IPC_CHANNELS.AI_ENGINEER_GET_RUN, id),
     analyzeFailure: (input) => ipcRenderer.invoke(IPC_CHANNELS.AI_ENGINEER_ANALYZE_FAILURE, input),
     listFindings: () => ipcRenderer.invoke(IPC_CHANNELS.AI_ENGINEER_LIST_FINDINGS)
+  },
+  codeScanner: {
+    pickFolder: () => ipcRenderer.invoke(IPC_CHANNELS.CODE_SCANNER_PICK_FOLDER),
+    scan: (input) => ipcRenderer.invoke(IPC_CHANNELS.CODE_SCANNER_SCAN, input),
+    cancel: (scanId) => ipcRenderer.invoke(IPC_CHANNELS.CODE_SCANNER_CANCEL, scanId),
+    onProgress: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, progress: Parameters<typeof callback>[0]) =>
+        callback(progress)
+      ipcRenderer.on(IPC_CHANNELS.CODE_SCANNER_PROGRESS, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.CODE_SCANNER_PROGRESS, handler)
+    },
+    estimateEnrich: (input) => ipcRenderer.invoke(IPC_CHANNELS.CODE_SCANNER_ENRICH_ESTIMATE, input),
+    enrich: (input) => ipcRenderer.invoke(IPC_CHANNELS.CODE_SCANNER_ENRICH, input),
+    openSource: (input) => ipcRenderer.invoke(IPC_CHANNELS.CODE_SCANNER_OPEN_SOURCE, input),
+    readSource: (input) => ipcRenderer.invoke(IPC_CHANNELS.CODE_SCANNER_READ_SOURCE, input),
+    scanRef: (input) => ipcRenderer.invoke(IPC_CHANNELS.CODE_SCANNER_SCAN_REF, input),
+    watch: (rootPath) => ipcRenderer.invoke(IPC_CHANNELS.CODE_SCANNER_WATCH, rootPath),
+    onChanged: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, rootPath: string) => callback(rootPath)
+      ipcRenderer.on(IPC_CHANNELS.CODE_SCANNER_CHANGED, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.CODE_SCANNER_CHANGED, handler)
+    },
+    onEnrichProgress: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, progress: Parameters<typeof callback>[0]) =>
+        callback(progress)
+      ipcRenderer.on(IPC_CHANNELS.CODE_SCANNER_ENRICH_PROGRESS, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.CODE_SCANNER_ENRICH_PROGRESS, handler)
+    }
   },
   mcp: {
     getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.MCP_GET_STATUS),

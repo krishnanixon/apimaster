@@ -1,4 +1,5 @@
 import type { MockBodyType, MockResponse, MockRoute, MockServer } from '../../types/mock-server'
+import { MOCK_RESPONSE_MODES } from '../../types/mock-server'
 import { areRoutePatternsAmbiguous, normalizeMockPath, routePatternKey } from './route-matcher'
 
 export function isValidPort(port: number): boolean {
@@ -52,10 +53,26 @@ export function defaultContentTypeForBody(bodyType: MockBodyType): string | unde
   }
 }
 
+const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
+
+/** Node's `writeHead` throws on these, so reject them at save time instead of at request time. */
+export function validateMockHeaders(headers: Record<string, string>): string | null {
+  for (const [key, value] of Object.entries(headers)) {
+    if (!HEADER_NAME.test(key)) return `Invalid header name: "${key}"`
+    if (/[\r\n\0]/.test(value)) return `Header "${key}" contains a line break`
+  }
+  return null
+}
+
+export const MAX_MOCK_DELAY_MS = 120_000
+
 export function validateMockResponse(response: MockResponse): string | null {
   if (!response.name.trim()) return 'Response name is required'
   if (!validateHttpStatus(response.status)) return 'Invalid HTTP status code'
   if (response.delay < 0 || !Number.isFinite(response.delay)) return 'Delay must be >= 0'
+  if (response.delay > MAX_MOCK_DELAY_MS) return `Delay must be at most ${MAX_MOCK_DELAY_MS} ms`
+  const headerError = validateMockHeaders(response.headers ?? {})
+  if (headerError) return `${response.name}: ${headerError}`
   if (response.bodyType === 'json') {
     const json = validateJsonBody(response.body)
     if (!json.ok) return `Invalid JSON: ${json.message}`
@@ -80,6 +97,7 @@ export function validateMockRoute(route: MockRoute, existing: MockRoute[]): stri
     }
   }
   if (route.responses.length === 0) return 'At least one response is required'
+  if (route.responseMode && !MOCK_RESPONSE_MODES.includes(route.responseMode)) return 'Invalid response mode'
   for (const resp of route.responses) {
     const err = validateMockResponse(resp)
     if (err) return err

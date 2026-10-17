@@ -14,10 +14,6 @@ electron/**/*.js
 electron/**/*.d.ts
 shared/**/*.js
 shared/**/*.d.ts
-src/modules/vps-manager/**/*.js
-src/modules/vps-manager/**/*.d.ts
-src/modules/clipboard-manager/**/*.js
-src/modules/clipboard-manager/**/*.d.ts
 electron.vite.config.js
 electron.vite.config.d.ts
 
@@ -25,12 +21,6 @@ electron.vite.config.d.ts
 .env
 .env.local
 .env.*.local
-
-# Database
-prisma/dev.db
-prisma/dev.db-journal
-*.db
-*.db-journal
 
 # IDE
 .vscode/

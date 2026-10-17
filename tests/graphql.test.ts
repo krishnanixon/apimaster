@@ -328,7 +328,7 @@ describe('GraphQL autocomplete', () => {
 })
 
 describe('GraphQL import and export', () => {
-  it('keeps GraphQL fields in APIMaster JSON and Postman graphql mode', () => {
+  it('keeps GraphQL fields in Shurikly JSON and Postman graphql mode', () => {
     const request = graphqlRequest()
     const collection: ApiCollection = {
       id: 'col',

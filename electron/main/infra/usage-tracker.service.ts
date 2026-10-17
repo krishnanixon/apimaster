@@ -1,5 +1,6 @@
 import { estimateCostUsd } from '@shared/lib/ai-models'
 import { usageRepository } from '../repositories/usage.repository'
+import { activityRepository } from '../repositories/activity.repository'
 import { logger } from './logger.service'
 
 /** Shape of the `usage` object returned by the OpenAI Chat Completions API. */
@@ -28,6 +29,8 @@ export function recordUsage({ feature, model, projectId, usage }: RecordUsagePar
   const totalTokens = usage.total_tokens ?? promptTokens + completionTokens
 
   if (promptTokens === 0 && completionTokens === 0 && totalTokens === 0) return
+
+  activityRepository.record('ai')
 
   void usageRepository
     .record({

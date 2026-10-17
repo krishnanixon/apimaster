@@ -19,7 +19,7 @@ describe('MCP tool catalog', () => {
 })
 
 describe('MCP SDK registration', () => {
-  it('lists every APIMaster tool to a client', async () => {
+  it('lists every Shurikly tool to a client', async () => {
     const server = new McpServer({ name: MCP_SERVER_NAME, version: '0.0.0' }, { instructions: MCP_SERVER_INSTRUCTIONS })
     for (const name of MCP_TOOL_NAMES) {
       const spec = MCP_TOOLS[name]

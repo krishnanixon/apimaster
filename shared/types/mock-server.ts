@@ -4,6 +4,19 @@ export type MockHttpMethod = HttpMethod
 
 export type MockBodyType = 'json' | 'text' | 'xml' | 'html' | 'binary'
 
+/**
+ * How a route chooses among its enabled responses when the request does not
+ * ask for one explicitly (via `X-Mock-Response` or `?__response=`).
+ */
+export type MockResponseMode = 'active' | 'sequential' | 'random'
+
+export const MOCK_RESPONSE_MODES: MockResponseMode[] = ['active', 'sequential', 'random']
+
+/** Request header clients can send to pick a response by name, id, or status code. */
+export const MOCK_RESPONSE_HEADER = 'x-mock-response'
+/** Query parameter equivalent of `MOCK_RESPONSE_HEADER` (stripped before templating). */
+export const MOCK_RESPONSE_QUERY = '__response'
+
 export type MockServerRuntimeStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'error'
 
 export interface MockCorsSettings {
@@ -35,6 +48,8 @@ export interface MockRoute {
   sourceCollectionId?: string
   responses: MockResponse[]
   activeResponseId?: string
+  /** Defaults to `active`. */
+  responseMode?: MockResponseMode
 }
 
 export interface MockServer {
@@ -72,6 +87,8 @@ export interface MockRequestLog {
   status: number
   durationMs: number
   responseSize: number
+  /** Name of the mock response that was served, when one matched. */
+  responseName?: string
 }
 
 export interface CreateMockServerInput {
@@ -115,6 +132,9 @@ export interface ImportCollectionToMockInput {
     url: string
     name: string
     description?: string
+    /** Example response for the route (e.g. from Code Scanner AI enrichment). */
+    exampleBody?: string
+    exampleStatus?: number
   }>
   createNewServer?: boolean
   serverName?: string

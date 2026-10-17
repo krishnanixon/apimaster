@@ -8,15 +8,18 @@ import type {
   AITestConnectionResult,
   AppSettings,
   ApiKeyStatus,
+  ActivityLog,
   ApiUsageSummary,
   IpcResult,
+  UserProfile,
+  UserProfilePatch,
   LogEntry
 } from '../types'
 import type { BugReport, CreateBugReportInput } from '../types/diagnostics'
 import type { WorkspaceLoadResult, WorkspaceSaveResult } from '../lib/workspace-document'
 import type {
   ApiExecutionResult,
-  ApiTestResult,
+  ApiTestRun,
   DescribeApiRequestInput,
   EnhanceApiRequestInput,
   EnhanceApiRequestResult,
@@ -57,6 +60,16 @@ import type {
   ApiAnalysisRecord,
   GenerateAiTestsInput
 } from '../types/ai-engineer'
+import type {
+  CodeScanEnrichEstimate,
+  CodeScanEnrichInput,
+  CodeScanEnrichProgress,
+  CodeScanEnrichResult,
+  CodeScanInput,
+  CodeScanProgress,
+  CodeScanResult,
+  DetectedEndpoint
+} from '../types/code-scanner'
 import type { McpInvokeMessage, McpInvokeResult, McpServerConfigPatch, McpServerStatus } from '../mcp/types'
 
 export interface ElectronAPI {
@@ -93,6 +106,14 @@ export interface ElectronAPI {
   settings: {
     get: () => Promise<IpcResult<AppSettings>>
     update: (data: Partial<AppSettings>) => Promise<IpcResult<AppSettings>>
+  }
+  profile: {
+    get: () => Promise<IpcResult<UserProfile>>
+    update: (patch: UserProfilePatch) => Promise<IpcResult<UserProfile>>
+  }
+  activity: {
+    get: () => Promise<IpcResult<ActivityLog>>
+    clear: () => Promise<IpcResult>
   }
   apiKey: {
     set: (key: string) => Promise<IpcResult>
@@ -131,7 +152,7 @@ export interface ElectronAPI {
   apiStudio: {
     sendRequest: (request: ResolvedHttpRequest) => Promise<IpcResult<ApiExecutionResult>>
     cancelRequest: (clientRequestId: string) => Promise<IpcResult>
-    runTests: (input: RunApiTestsInput) => Promise<IpcResult<ApiTestResult[]>>
+    runTests: (input: RunApiTestsInput) => Promise<IpcResult<ApiTestRun>>
     runPreRequest: (input: RunPreRequestScriptInput) => Promise<IpcResult<PreRequestScriptResult>>
     saveResponse: (input: SaveResponseFileInput) => Promise<IpcResult<string>>
     pickImportCollection: () => Promise<IpcResult<string>>
@@ -197,6 +218,29 @@ export interface ElectronAPI {
     getRun: (id: string) => Promise<IpcResult<AiTestRun>>
     analyzeFailure: (input: AnalyzeAiFailureInput) => Promise<IpcResult<AiFailureAnalysis>>
     listFindings: () => Promise<IpcResult<AiFinding[]>>
+  }
+  codeScanner: {
+    /** Opens the native folder picker. Resolves to null when the user cancels. */
+    pickFolder: () => Promise<IpcResult<string | null>>
+    scan: (input: CodeScanInput) => Promise<IpcResult<CodeScanResult>>
+    cancel: (scanId: string) => Promise<IpcResult>
+    onProgress: (callback: (progress: CodeScanProgress) => void) => () => void
+    /** Cost and provider for an AI enrichment run — shown before asking for consent. */
+    estimateEnrich: (input: { rootPath: string; endpoints: DetectedEndpoint[] }) => Promise<IpcResult<CodeScanEnrichEstimate>>
+    enrich: (input: CodeScanEnrichInput) => Promise<IpcResult<CodeScanEnrichResult>>
+    onEnrichProgress: (callback: (progress: CodeScanEnrichProgress) => void) => () => void
+    /** Opens a scanned file at a line in the installed code editor (falls back to the default app). */
+    openSource: (input: { rootPath: string; file: string; line: number }) => Promise<IpcResult<{ editor: string | null }>>
+    /** Code around scanned locations, from a folder picked in the folder picker; credentials redacted. */
+    readSource: (input: {
+      rootPath: string
+      locations: Array<{ file: string; line: number }>
+    }) => Promise<IpcResult<Array<{ file: string; line: number; code: string }>>>
+    /** Endpoints as they are at a git branch, tag or commit (read from git; the working tree is untouched). */
+    scanRef: (input: { rootPath: string; ref: string }) => Promise<IpcResult<{ commit: string; endpoints: DetectedEndpoint[]; truncated: boolean }>>
+    /** Watches a scanned folder for source changes; `null` stops. */
+    watch: (rootPath: string | null) => Promise<IpcResult>
+    onChanged: (callback: (rootPath: string) => void) => () => void
   }
   mcp: {
     getStatus: () => Promise<IpcResult<McpServerStatus>>

@@ -5,14 +5,14 @@ describe('settings registry', () => {
   it('lists centralized and in-place domains', () => {
     const centralized = SETTINGS_DOMAINS.filter((d) => d.centralized)
     const inPlace = SETTINGS_DOMAINS.filter((d) => !d.centralized)
-    expect(centralized.map((d) => d.settingsTab)).toEqual(['appearance', 'ai', 'mcp', 'usage', 'about'])
+    expect(centralized.map((d) => d.settingsTab)).toEqual(['profile', 'appearance', 'ai', 'mcp', 'usage', 'about'])
     expect(inPlace.some((d) => d.id === 'api-studio')).toBe(true)
   })
 
-  it('falls back to the AI tab for unknown tabs', () => {
-    expect(normalizeSettingsTab(null)).toBe('ai')
+  it('falls back to the profile tab for unknown tabs', () => {
+    expect(normalizeSettingsTab(null)).toBe('profile')
     expect(normalizeSettingsTab('usage')).toBe('usage')
-    expect(normalizeSettingsTab('database')).toBe('ai')
+    expect(normalizeSettingsTab('database')).toBe('profile')
   })
 
   it('validates tab ids', () => {

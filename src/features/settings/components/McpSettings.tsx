@@ -49,7 +49,7 @@ export function McpSettings() {
     setPortDraft(String(status.port))
   }, [status])
 
-  async function save(patch: { enabled?: boolean; port?: number; exposeSecrets?: boolean }) {
+  async function save(patch: { enabled?: boolean; port?: number; exposeSecrets?: boolean; exposeSourceCode?: boolean }) {
     setBusy(true)
     try {
       const res = await window.electronAPI.mcp.updateConfig(patch)
@@ -84,7 +84,7 @@ export function McpSettings() {
     <SettingsSection>
       <SettingsGroup
         title="Local MCP server"
-        description="Agents on this computer can read and edit the open workspace, and send requests through APIMaster. The server listens on localhost only."
+        description="Agents on this computer can read and edit the open workspace, and send requests through Shurikly. The server listens on localhost only."
         icon={Cable}
         flush
       >
@@ -109,6 +109,13 @@ export function McpSettings() {
           checked={status.exposeSecrets}
           disabled={busy}
           onChange={(exposeSecrets) => void save({ exposeSecrets })}
+        />
+        <SettingToggle
+          label="Share scanned source code"
+          description="Off by default. Lets agents read the handler code behind requests the Code Scanner created (get_request_source), from folders you scanned. Credentials in the code are redacted."
+          checked={status.exposeSourceCode}
+          disabled={busy}
+          onChange={(exposeSourceCode) => void save({ exposeSourceCode })}
         />
         <SettingsRow
           label="Port"

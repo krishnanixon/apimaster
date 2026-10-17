@@ -61,7 +61,7 @@ describe('WorkspaceStore', () => {
   let store: WorkspaceStore
 
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), 'apimaster-workspace-'))
+    root = mkdtempSync(join(tmpdir(), 'shurikly-workspace-'))
     electronState.encryptionAvailable = true
     store = new WorkspaceStore(
       () => root,

@@ -1,9 +1,9 @@
-APIMaster
+Shurikly
 Terms & Conditions
 Version 1.1.0 · Last updated September 27, 2026
 
 1. Acceptance of terms
-By installing, downloading, or using APIMaster (“the Software”), you agree to these Terms & Conditions. If you do not agree, do not install or use the Software.
+By installing, downloading, or using Shurikly (“the Software”), you agree to these Terms & Conditions. If you do not agree, do not install or use the Software.
 
 2. Open-source license
 The Software is distributed under the MIT License. These terms describe how the application behaves and your responsibilities when using it; they do not restrict the rights the MIT License grants you to use, copy, modify, and distribute the source code. If these terms conflict with the MIT License, the MIT License governs.

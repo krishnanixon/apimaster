@@ -11,6 +11,7 @@ import type {
 } from '@shared/types/mock-server'
 import { mockServerManager, findAvailablePort } from '../mock-server/mock-server-manager'
 import { logger } from '../infra/logger.service'
+import { activityRepository } from '../repositories/activity.repository'
 
 function success<T>(data?: T): IpcResult<T> {
   return { success: true, data }
@@ -44,6 +45,7 @@ export function registerMockServerHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.MOCK_SERVER_CREATE, async (_e, input: CreateMockServerInput) => {
     try {
       const server = await mockServerManager.create(input ?? {})
+      activityRepository.record('mock')
       return success(server)
     } catch (e) {
       return failure(e instanceof Error ? e.message : 'Failed to create mock server')
@@ -178,7 +180,9 @@ export function registerMockServerHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.MOCK_SERVER_IMPORT_COLLECTION, (_e, input: ImportCollectionToMockInput) => {
     try {
-      return success(mockServerManager.importCollection(input))
+      const server = mockServerManager.importCollection(input)
+      activityRepository.record('mock')
+      return success(server)
     } catch (e) {
       return failure(e instanceof Error ? e.message : 'Import failed')
     }

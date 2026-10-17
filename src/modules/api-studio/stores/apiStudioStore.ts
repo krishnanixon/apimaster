@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
+import { extensionForContentType } from '@shared/lib/response-content'
 import { toast } from 'sonner'
 import type {
   ApiCollection,
@@ -21,7 +22,7 @@ import type {
 } from '../types/api.types'
 import { createEmptyKeyValue, createEmptyRequest, syncPathParams } from '../services/requestBuilder'
 import { cancelRequest as cancelHttpRequest, executeResolved, finishExecution, prepareRequest } from '../services/apiClient'
-import { createEmptyEnvironment, enabledVariableMap } from '../services/environment'
+import { applyVariableChanges, createEmptyEnvironment, enabledVariableMap } from '../services/environment'
 import { parseCurl } from '../services/curlParser'
 import { exportToPostmanCollection } from '../services/postman'
 import { collectCollectionRequests, collectFolderRequests, runRequestList } from '../services/collectionRunner'
@@ -45,6 +46,14 @@ export interface WebSocketMessage {
   timestamp: string
 }
 
+/** A request as sent plus the response it produced — the unit the Compare view diffs. */
+export interface ResponseSnapshot {
+  request: ApiRequest
+  response: ApiExecutionResult
+  capturedAt: string
+  label: string
+}
+
 export interface TabState {
   id: string
   request: ApiRequest
@@ -61,6 +70,12 @@ export interface TabState {
   wsConnecting: boolean
   wsMessages: WebSocketMessage[]
   graphqlSchemaLoading: boolean
+  /** The run that produced `response`. In-memory only (never persisted). */
+  lastRun?: ResponseSnapshot | null
+  /** The run before `lastRun`, so "compare with previous" works without setup. */
+  previousRun?: ResponseSnapshot | null
+  /** A response the user pinned to compare later runs against. */
+  baseline?: ResponseSnapshot | null
 }
 
 interface RunnerState {
@@ -164,6 +179,8 @@ interface ApiStudioState {
 
   // Response actions
   saveResponseToFile: (tabId: string) => Promise<void>
+  pinResponseBaseline: (tabId: string) => void
+  clearResponseBaseline: (tabId: string) => void
 
   // Collection runner
   runCollection: (collectionId: string, options: CollectionRunnerOptions) => Promise<void>
@@ -188,6 +205,10 @@ interface ApiStudioState {
 
   // Import / export
   importCollection: (json: string) => string | null
+  /** Adds a collection built elsewhere (e.g. by the Code Scanner). */
+  addCollection: (collection: ApiCollection) => void
+  /** Replaces a collection by id (e.g. after a Code Scanner re-scan); unedited open tabs follow. */
+  replaceCollection: (collection: ApiCollection) => void
   exportCollection: (collectionId: string) => string
   importCurlAsTab: (curl: string) => boolean
 }
@@ -806,8 +827,24 @@ export const useApiStudioStore = create<ApiStudioState>()(
         const current = get().tabs.find((t) => t.id === tabId)
         if (!current || current.clientRequestId !== resolved.clientRequestId) return
 
+        const snapshot: ResponseSnapshot = {
+          request: structuredClone(tab.request),
+          response: result,
+          capturedAt: new Date().toISOString(),
+          label: `${result.status || 'Error'} · ${new Date().toLocaleTimeString()}`
+        }
         set((state) => ({
-          tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, loading: false, response: result } : t))
+          tabs: state.tabs.map((t) =>
+            t.id === tabId
+              ? {
+                  ...t,
+                  loading: false,
+                  response: result,
+                  previousRun: t.lastRun ?? t.previousRun ?? null,
+                  lastRun: snapshot
+                }
+              : t
+          )
         }))
 
         const historyEntry: ApiHistoryEntry = {
@@ -948,15 +985,22 @@ export const useApiStudioStore = create<ApiStudioState>()(
       runTabTests: async (tabId) => {
         const tab = get().tabs.find((t) => t.id === tabId)
         if (!tab?.response || !tab.request.tests?.trim()) return
+        const activeEnv = get().environments.find((e) => e.id === get().activeEnvironmentId)
+        const variables = activeEnv ? enabledVariableMap(activeEnv.variables) : undefined
         const response = await window.electronAPI.apiStudio.runTests({
           script: tab.request.tests,
           request: tab.request,
-          response: tab.response
+          response: tab.response,
+          variables
         })
         if (response.success && response.data) {
+          const { results, variables: after } = response.data
           set((state) => ({
-            tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, testResults: response.data! } : t))
+            tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, testResults: results } : t))
           }))
+          // Test scripts can save values for later requests, e.g. the token a login returns.
+          const updated = activeEnv && variables && after ? applyVariableChanges(activeEnv.variables, variables, after) : null
+          if (activeEnv && updated) get().updateEnvironmentVariables(activeEnv.id, updated)
         }
       },
 
@@ -974,6 +1018,21 @@ export const useApiStudioStore = create<ApiStudioState>()(
           toast.error('Invalid Postman collection JSON')
           return null
         }
+      },
+
+      addCollection: (collection) => {
+        set((state) => ({ collections: [...state.collections, collection] }))
+      },
+
+      replaceCollection: (collection) => {
+        const byId = new Map(collection.requests.map((r) => [r.id, r]))
+        set((state) => ({
+          collections: state.collections.map((c) => (c.id === collection.id ? collection : c)),
+          // Tabs with unsaved edits keep them; clean tabs show the updated request.
+          tabs: state.tabs.map((t) =>
+            t.collectionId === collection.id && !t.dirty && byId.has(t.request.id) ? { ...t, request: byId.get(t.request.id)! } : t
+          )
+        }))
       },
 
       exportCollection: (collectionId) => {
@@ -1146,13 +1205,32 @@ export const useApiStudioStore = create<ApiStudioState>()(
         const tab = get().tabs.find((t) => t.id === tabId)
         if (!tab?.response) return
         const res = await window.electronAPI.apiStudio.saveResponse({
-          defaultName: `${tab.request.name || 'response'}.${tab.response.isBinary ? 'bin' : 'json'}`,
+          defaultName: `${tab.request.name || 'response'}.${extensionForContentType(tab.response.contentType, tab.response.isBinary)}`,
           content: tab.response.isBinary ? (tab.response.dataBase64 ?? '') : tab.response.data,
           isBase64: tab.response.isBinary,
           contentType: tab.response.contentType
         })
         if (res.success && res.data) toast.success(`Saved to ${res.data}`)
         else if (res.error && res.error !== 'Save cancelled') toast.error(res.error)
+      },
+
+      pinResponseBaseline: (tabId) => {
+        const tab = get().tabs.find((t) => t.id === tabId)
+        if (!tab?.response) return
+        const baseline: ResponseSnapshot = tab.lastRun
+          ? { ...tab.lastRun, label: `Baseline · ${tab.lastRun.label}` }
+          : {
+              request: structuredClone(tab.request),
+              response: tab.response,
+              capturedAt: new Date().toISOString(),
+              label: `Baseline · ${tab.response.status}`
+            }
+        set((state) => ({ tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, baseline } : t)) }))
+        toast.success('Response pinned as baseline')
+      },
+
+      clearResponseBaseline: (tabId) => {
+        set((state) => ({ tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, baseline: null } : t)) }))
       },
 
       runCollection: async (collectionId, options) => {
@@ -1244,7 +1322,10 @@ export const useApiStudioStore = create<ApiStudioState>()(
             wsConnected: false,
             wsConnecting: false,
             wsMessages: [],
-            graphqlSchemaLoading: false
+            graphqlSchemaLoading: false,
+            lastRun: null,
+            previousRun: null,
+            baseline: null
           }))
         })
     }

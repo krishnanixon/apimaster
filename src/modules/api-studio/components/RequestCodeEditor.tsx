@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
-import { EditorView, keymap, placeholder as placeholderExt } from '@codemirror/view'
+import { Decoration, EditorView, MatchDecorator, ViewPlugin, keymap, placeholder as placeholderExt } from '@codemirror/view'
+import type { DecorationSet, ViewUpdate } from '@codemirror/view'
 import type { Extension } from '@codemirror/state'
 import { json } from '@codemirror/lang-json'
 import { Wand2, Copy } from 'lucide-react'
@@ -30,6 +31,43 @@ interface RequestCodeEditorProps {
   formatText?: (value: string) => string | null
   formatTitle?: string
   autocomplete?: boolean
+  /** Case-insensitive text to highlight (read-only search in response views). */
+  highlightQuery?: string
+}
+
+const searchMatchMark = Decoration.mark({ class: 'cm-response-search-match' })
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** Highlights every occurrence of `query` in the visible viewport. */
+function highlightMatches(query: string): Extension {
+  const decorator = new MatchDecorator({
+    regexp: new RegExp(escapeRegExp(query), 'gi'),
+    decoration: () => searchMatchMark
+  })
+  return [
+    ViewPlugin.fromClass(
+      class {
+        decorations: DecorationSet
+        constructor(view: EditorView) {
+          this.decorations = decorator.createDeco(view)
+        }
+        update(update: ViewUpdate) {
+          this.decorations = decorator.updateDeco(update, this.decorations)
+        }
+      },
+      { decorations: (v) => v.decorations }
+    ),
+    EditorView.baseTheme({
+      '.cm-response-search-match': {
+        backgroundColor: 'rgba(250, 204, 21, 0.35)',
+        borderRadius: '2px',
+        outline: '1px solid rgba(234, 179, 8, 0.6)'
+      }
+    })
+  ]
 }
 
 function formatJson(value: string): string | null {
@@ -57,7 +95,8 @@ export function RequestCodeEditor({
   extraExtensions,
   formatText,
   formatTitle = 'Format',
-  autocomplete = false
+  autocomplete = false,
+  highlightQuery
 }: RequestCodeEditorProps) {
   const theme = useApiStudioEditorTheme()
   const asyncLang = useLanguageExtension(languageFile)
@@ -148,6 +187,7 @@ export function RequestCodeEditor({
     if (isJson) list.push(json())
     else if (asyncLang) list.push(asyncLang)
     if (extraExtensions?.length) list.push(...extraExtensions)
+    if (highlightQuery?.trim()) list.push(highlightMatches(highlightQuery.trim()))
 
     const canFormat = showFormat && !readOnly && (isJson || Boolean(formatTextRef.current))
     if (canFormat) {
@@ -171,7 +211,7 @@ export function RequestCodeEditor({
       )
     }
     return list
-  }, [asyncLang, extraExtensions, isJson, label, placeholder, readOnly, showFormat])
+  }, [asyncLang, extraExtensions, highlightQuery, isJson, label, placeholder, readOnly, showFormat])
 
   const displayLabel = label ?? (isJson ? 'JSON' : languageFile?.replace(/^.*\./, '').toUpperCase())
   const resolvedHeight = editorHeight > 0 ? editorHeight : Number.parseInt(minHeight, 10) || 120

@@ -28,7 +28,7 @@ function importNativeCollection(value: ApiCollection): ApiCollection {
   }
 }
 
-/** Imports an APIMaster backup or a Postman collection without dropping GraphQL fields. */
+/** Imports a Shurikly backup or a Postman collection without dropping GraphQL fields. */
 export function importCollectionJson(json: string): { collection: ApiCollection; warnings: string[] } {
   const parsed = JSON.parse(json) as unknown
   if (isNativeCollection(parsed)) {

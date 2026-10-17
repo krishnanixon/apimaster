@@ -50,6 +50,7 @@ export function loadMcpConfig(): McpServerConfig {
     port: port >= 1024 && port <= 65535 ? port : MCP_DEFAULT_PORT,
     token: typeof raw.token === 'string' && raw.token.length >= 16 ? raw.token : randomToken(),
     exposeSecrets: raw.exposeSecrets === true,
+    exposeSourceCode: raw.exposeSourceCode === true,
     launch
   }
   const tokenChanged = config.token !== raw.token
@@ -70,6 +71,7 @@ export function saveMcpConfig(patch: McpServerConfigPatch): McpServerConfig {
     enabled: patch.enabled ?? current.enabled,
     port: patch.port !== undefined ? assertMcpPort(patch.port) : current.port,
     exposeSecrets: patch.exposeSecrets ?? current.exposeSecrets,
+    exposeSourceCode: patch.exposeSourceCode ?? current.exposeSourceCode,
     launch: currentAppLaunch()
   }
   writeJsonFile(FILE, next)

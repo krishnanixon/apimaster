@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid'
 import type { ApiEnvironment, ApiRequest, KeyValuePair, RequestAuth } from '../types/api.types'
 
 const VARIABLE_PATTERN = /\{\{\s*([\w.-]+)\s*\}\}/g
@@ -8,6 +9,30 @@ export function enabledVariableMap(variables: KeyValuePair[]): Record<string, st
     if (v.enabled && v.key.trim()) map[v.key.trim()] = v.value
   }
   return map
+}
+
+/**
+ * Applies what a script did to the environment (`pm.environment.set/unset`): changed values are
+ * updated, new keys are added. Returns `null` when nothing changed.
+ */
+export function applyVariableChanges(
+  variables: KeyValuePair[],
+  before: Record<string, string>,
+  after: Record<string, string>
+): KeyValuePair[] | null {
+  let changed = false
+  const next = variables.map((v) => {
+    const key = v.key.trim()
+    if (!v.enabled || !(key in before) || after[key] === before[key]) return v
+    changed = true
+    return key in after ? { ...v, value: after[key] } : { ...v, enabled: false }
+  })
+  for (const [key, value] of Object.entries(after)) {
+    if (key in before) continue
+    changed = true
+    next.push({ id: uuidv4(), key, value, enabled: true })
+  }
+  return changed ? next : null
 }
 
 /** Replaces every `{{key}}` occurrence in `input` using `variables`. Unknown keys are left untouched. */

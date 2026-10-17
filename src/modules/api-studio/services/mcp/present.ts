@@ -13,6 +13,8 @@ import { MCP_REDACTED } from '@shared/mcp/tools'
 
 export interface McpPresentOptions {
   redactSecrets: boolean
+  /** The user allowed agents to read scanned source code (MCP settings). */
+  allowSourceCode?: boolean
   maxBodyChars?: number
 }
 

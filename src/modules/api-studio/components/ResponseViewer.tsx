@@ -1,5 +1,20 @@
-import { useState } from 'react'
-import { Clock, HardDrive, Download, ChevronDown, Send, Copy, CheckCircle2, XCircle, Sparkles } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import {
+  Clock,
+  HardDrive,
+  Download,
+  ChevronDown,
+  Send,
+  Copy,
+  CheckCircle2,
+  XCircle,
+  Sparkles,
+  GitCompare,
+  Pin,
+  PinOff,
+  Server,
+  Plus
+} from 'lucide-react'
 import { toast } from 'sonner'
 import ReactMarkdown from 'react-markdown'
 import { Badge } from '@/shared/components/ui/badge'
@@ -11,12 +26,20 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger
 } from '@/shared/components/ui/dropdown-menu'
 import { cn } from '@/shared/lib/utils'
 import { useApiStudioStore } from '../stores/apiStudioStore'
 import { ResponseBodyView } from './response/ResponseBodyView'
 import { GraphQLErrorsView } from './response/GraphQLErrorsView'
+import { ResponseDiffDialog } from './response/ResponseDiffDialog'
+import { useMockServerStore } from '@/modules/mock-server/stores/mockServerStore'
+import { formatBytes } from '@shared/lib/response-content'
 import { useApiStudioAi } from '../hooks/useApiStudioAi'
 import type { ResponseTab } from '../types/api.types'
 
@@ -25,12 +48,6 @@ function statusVariant(status: number): 'success' | 'warning' | 'destructive' | 
   if (status < 300) return 'success'
   if (status < 400) return 'warning'
   return 'destructive'
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function splitCookies(setCookieHeader: string | undefined): { name: string; value: string; attrs: string }[] {
@@ -51,11 +68,38 @@ export function ResponseViewer({ tabId }: { tabId: string }) {
   const tab = useApiStudioStore((s) => s.tabs.find((t) => t.id === tabId))
   const setResponseView = useApiStudioStore((s) => s.setResponseView)
   const saveResponseToFile = useApiStudioStore((s) => s.saveResponseToFile)
+  const pinResponseBaseline = useApiStudioStore((s) => s.pinResponseBaseline)
+  const clearResponseBaseline = useApiStudioStore((s) => s.clearResponseBaseline)
+  const mockServers = useMockServerStore((s) => s.servers)
+  const refreshMockServers = useMockServerStore((s) => s.refresh)
+  const addExampleFromResponse = useMockServerStore((s) => s.addExampleFromResponse)
   const ai = useApiStudioAi(tabId)
   const [explainOpen, setExplainOpen] = useState(false)
   const [explanation, setExplanation] = useState('')
+  const [compareOpen, setCompareOpen] = useState(false)
+
+  // GraphQL shows `data` in the body view; memoize so the body view keeps its state between renders.
+  const bodyResponse = useMemo(() => {
+    const res = tab?.response
+    if (!res?.graphql || res.graphql.parseError) return res ?? null
+    return { ...res, data: JSON.stringify(res.graphql.data, null, 2), contentType: 'application/json', isBinary: false }
+  }, [tab?.response])
 
   if (!tab) return null
+
+  async function saveAsMockExample(serverId?: string) {
+    if (!tab?.response) return
+    const result = await addExampleFromResponse(tab.request, tab.response, serverId)
+    if (!result) {
+      toast.error('Could not save the mock example')
+      return
+    }
+    toast.success(
+      result.created
+        ? `Created ${result.route.method} ${result.route.path} on “${result.server.name}”`
+        : `Added example to ${result.route.method} ${result.route.path} on “${result.server.name}”`
+    )
+  }
 
   const { response } = tab
   const headerEntries = response ? Object.entries(response.headers) : []
@@ -125,6 +169,16 @@ export function ResponseViewer({ tabId }: { tabId: string }) {
               variant="ghost"
               size="sm"
               className="h-6 gap-1 px-1.5 text-[10px]"
+              title="Compare with a previous run, a pinned baseline, or another tab"
+              onClick={() => setCompareOpen(true)}
+            >
+              <GitCompare className="h-3 w-3" />
+              Compare
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-1 px-1.5 text-[10px]"
               disabled={ai.busy}
               title="Explain this response"
               onClick={() => {
@@ -139,9 +193,9 @@ export function ResponseViewer({ tabId }: { tabId: string }) {
               {ai.busy ? <Spinner size="sm" /> : <Sparkles className="h-3 w-3" />}
               Explain
             </Button>
-            <DropdownMenu>
+            <DropdownMenu onOpenChange={(open) => open && void refreshMockServers()}>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" title="Save response">
+                <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" title="More response actions">
                   <ChevronDown className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
@@ -149,6 +203,39 @@ export function ResponseViewer({ tabId }: { tabId: string }) {
                 <DropdownMenuItem onSelect={() => void saveResponseToFile(tabId)}>
                   <Download className="h-3.5 w-3.5" /> Save to file
                 </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setCompareOpen(true)}>
+                  <GitCompare className="h-3.5 w-3.5" /> Compare…
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => pinResponseBaseline(tabId)}>
+                  <Pin className="h-3.5 w-3.5" /> {tab.baseline ? 'Replace pinned baseline' : 'Pin as baseline'}
+                </DropdownMenuItem>
+                {tab.baseline && (
+                  <DropdownMenuItem onSelect={() => clearResponseBaseline(tabId)}>
+                    <PinOff className="h-3.5 w-3.5" /> Clear baseline
+                  </DropdownMenuItem>
+                )}
+                {response.status > 0 && (tab.request.requestType ?? 'http') === 'http' && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <Server className="h-3.5 w-3.5" /> Save as mock example
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        {mockServers.length > 0 && <DropdownMenuLabel className="text-[10px]">Add to server</DropdownMenuLabel>}
+                        {mockServers.map((server) => (
+                          <DropdownMenuItem key={server.id} onSelect={() => void saveAsMockExample(server.id)}>
+                            <Server className="h-3.5 w-3.5" /> {server.name}
+                          </DropdownMenuItem>
+                        ))}
+                        {mockServers.length > 0 && <DropdownMenuSeparator />}
+                        <DropdownMenuItem onSelect={() => void saveAsMockExample()}>
+                          <Plus className="h-3.5 w-3.5" /> New mock server
+                        </DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -215,18 +302,11 @@ export function ResponseViewer({ tabId }: { tabId: string }) {
           </div>
 
           <div className="min-h-0 flex-1 overflow-hidden">
-            {activeView === 'body' && (
+            {activeView === 'body' && bodyResponse && (
               <ResponseBodyView
-                response={
-                  response.graphql && !response.graphql.parseError
-                    ? {
-                        ...response,
-                        data: JSON.stringify(response.graphql.data, null, 2),
-                        contentType: 'application/json',
-                        isBinary: false
-                      }
-                    : response
-                }
+                response={bodyResponse}
+                fileName={tab.request.name || 'response'}
+                onSave={() => void saveResponseToFile(tabId)}
               />
             )}
             {activeView === 'errors' && response.graphql && <GraphQLErrorsView info={response.graphql} />}
@@ -305,6 +385,8 @@ export function ResponseViewer({ tabId }: { tabId: string }) {
           </div>
         </>
       )}
+
+      <ResponseDiffDialog tabId={tabId} open={compareOpen} onOpenChange={setCompareOpen} />
 
       <Dialog open={explainOpen} onOpenChange={setExplainOpen}>
         <DialogContent className="max-w-xl">

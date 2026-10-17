@@ -3,7 +3,7 @@
  *
  * The main process registers these with the MCP server (zod schemas become the
  * JSON Schema Claude sees); the renderer implements them against the live
- * APIMaster store and only imports the inferred argument types.
+ * Shurikly store and only imports the inferred argument types.
  */
 import { z } from 'zod'
 
@@ -214,6 +214,13 @@ export const MCP_TOOLS = {
     input: { collectionId: id('Collection'), requestId: id('Request') },
     annotations: READ
   }),
+  get_request_source: tool({
+    title: 'Get request source code',
+    description:
+      'For a request the Code Scanner created: the server code that handles it (route definition and handler, with credentials redacted). Use it to explain a failing response or to fill in a body the handler expects. Only works when the user enabled "Share scanned source code" in Settings → MCP.',
+    input: { collectionId: id('Collection'), requestId: id('Request') },
+    annotations: READ
+  }),
   search_requests: tool({
     title: 'Search requests',
     description: 'Find saved requests across all collections whose name, URL or notes contain the query.',
@@ -244,7 +251,7 @@ export const MCP_TOOLS = {
   get_active_tab: tool({
     title: 'Get active tab',
     description:
-      'What the user is looking at in APIMaster right now: the active request draft (including unsaved edits), its last response and test results, and a list of other open tabs.',
+      'What the user is looking at in Shurikly right now: the active request draft (including unsaved edits), its last response and test results, and a list of other open tabs.',
     input: { maxBodyChars },
     annotations: READ
   }),
@@ -446,7 +453,7 @@ export const MCP_TOOLS = {
   send_request: tool({
     title: 'Send request',
     description:
-      'Send an HTTP request through APIMaster and return the response. Either pass collectionId + requestId to send a saved request, or pass `request` for an ad-hoc call (add collectionId to inherit that collection\'s auth/headers). Environment variables, pre-request scripts and tests run exactly as in the app, and the call is added to history.',
+      'Send an HTTP request through Shurikly and return the response. Either pass collectionId + requestId to send a saved request, or pass `request` for an ad-hoc call (add collectionId to inherit that collection\'s auth/headers). Environment variables, pre-request scripts and tests run exactly as in the app, and the call is added to history.',
     input: {
       collectionId: id('Collection').optional(),
       requestId: id('Request').optional().describe('Saved request to send (requires collectionId)'),
@@ -500,7 +507,7 @@ export const MCP_TOOLS = {
   // ── UI ────────────────────────────────────────────────────────────────────
   open_request: tool({
     title: 'Open request in app',
-    description: 'Open a saved request in an APIMaster tab and bring it into view for the user.',
+    description: 'Open a saved request in a Shurikly tab and bring it into view for the user.',
     input: { collectionId: id('Collection'), requestId: id('Request') },
     annotations: { ...WRITE, idempotentHint: true }
   })
@@ -516,11 +523,12 @@ export function isMcpToolName(value: unknown): value is McpToolName {
   return typeof value === 'string' && Object.prototype.hasOwnProperty.call(MCP_TOOLS, value)
 }
 
-export const MCP_SERVER_INSTRUCTIONS = `APIMaster is a local API client (like Postman). These tools read and edit the user's live workspace; changes appear in the app immediately.
+export const MCP_SERVER_INSTRUCTIONS = `Shurikly is a local API client (like Postman). These tools read and edit the user's live workspace; changes appear in the app immediately.
 
 - Workspace model: collections contain folders (nestable) and saved requests. Environments hold {{variables}} used in URLs, headers, bodies and auth.
 - Auth and headers inherit: a request with auth.type "inherit" uses its nearest folder's auth, then the collection's. Collection/folder headers merge into every child request.
 - Discover ids with list_collections, get_collection or search_requests before editing. Use get_active_tab to see what the user has open.
 - Prefer {{variables}} over hard-coded hosts and secrets; put shared values in an environment.
 - Secret values may be shown as "${MCP_REDACTED}". Sending that placeholder back keeps the stored secret. send_request always uses the real values.
+- Requests created by the Code Scanner know where their route is defined: get_request_source returns that code (if the user allowed it), which helps explain errors.
 - send_request and run_collection make real network calls to the target API. Be careful with non-GET requests against production.`

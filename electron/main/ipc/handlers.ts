@@ -3,6 +3,10 @@ import { IPC_CHANNELS } from '@shared/ipc/channels'
 import type { AIProviderConfigPatch, AIProviderId, CreateBugReportInput, IpcResult } from '@shared/types'
 import { settingsRepository } from '../repositories/settings.repository'
 import { usageRepository } from '../repositories/usage.repository'
+import { profileRepository } from '../repositories/profile.repository'
+import { activityRepository } from '../repositories/activity.repository'
+import { PROFILE_LIMITS } from '@shared/lib/profile'
+import { schema, validatedHandle } from './runtime-schema'
 import { apiKeyService } from '../infra/api-key.service'
 import { onboardingService } from '../infra/onboarding.service'
 import { TERMS_VERSION } from '@shared/constants/terms'
@@ -15,6 +19,7 @@ import { registerApiStudioHandlers } from './api-studio.handlers'
 import { registerMockServerHandlers } from './mock-server.handlers'
 import { registerAiEngineerHandlers } from './ai-engineer.handlers'
 import { registerMcpHandlers } from './mcp.handlers'
+import { registerCodeScannerHandlers } from './code-scanner.handlers'
 
 function success<T>(data?: T): IpcResult<T> {
   return { success: true, data }
@@ -77,6 +82,58 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
       return success(settings)
     } catch (e) {
       return failure(e instanceof Error ? e.message : 'Failed to update settings')
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.PROFILE_GET, () => {
+    try {
+      return success(profileRepository.get())
+    } catch (e) {
+      return failure(e instanceof Error ? e.message : 'Failed to read profile')
+    }
+  })
+
+  const profileText = (max: number) => schema.optional(schema.string({ max }))
+  validatedHandle(
+    IPC_CHANNELS.PROFILE_UPDATE,
+    [
+      schema.object({
+        displayName: profileText(PROFILE_LIMITS.displayName),
+        email: profileText(PROFILE_LIMITS.email),
+        role: profileText(PROFILE_LIMITS.role),
+        bio: profileText(PROFILE_LIMITS.bio),
+        location: profileText(PROFILE_LIMITS.location),
+        website: profileText(PROFILE_LIMITS.website),
+        avatarDataUrl: schema.optional(
+          schema.nullable(schema.string({ max: PROFILE_LIMITS.avatarDataUrl }))
+        )
+      })
+    ] as const,
+    (_e, patch) => {
+      try {
+        // Drop keys the renderer didn't send so they keep their stored value
+        const defined = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined))
+        return success(profileRepository.update(defined))
+      } catch (e) {
+        return failure(e instanceof Error ? e.message : 'Failed to save profile')
+      }
+    }
+  )
+
+  ipcMain.handle(IPC_CHANNELS.ACTIVITY_GET, () => {
+    try {
+      return success(activityRepository.get())
+    } catch (e) {
+      return failure(e instanceof Error ? e.message : 'Failed to read activity')
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.ACTIVITY_CLEAR, () => {
+    try {
+      activityRepository.clear()
+      return success()
+    } catch (e) {
+      return failure(e instanceof Error ? e.message : 'Failed to clear activity')
     }
   })
 
@@ -253,5 +310,6 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
   registerApiStudioHandlers(getMainWindow)
   registerMockServerHandlers()
   registerAiEngineerHandlers()
+  registerCodeScannerHandlers(getMainWindow)
   registerMcpHandlers(getMainWindow)
 }

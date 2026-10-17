@@ -5,8 +5,13 @@ import type {
   MockServer,
   MockServerStatus
 } from '@shared/types/mock-server'
-import { mockRouteFromRequest } from '@shared/lib/mock-server/from-request'
-import type { ApiCollection, ApiRequest } from '@shared/types/api-studio'
+import {
+  findMockRouteForRequest,
+  mockResponseFromExecution,
+  mockRouteFromRequest,
+  uniqueMockResponseName
+} from '@shared/lib/mock-server/from-request'
+import type { ApiCollection, ApiExecutionResult, ApiRequest } from '@shared/types/api-studio'
 
 interface MockServerState {
   servers: MockServer[]
@@ -35,6 +40,16 @@ interface MockServerState {
     request: ApiRequest,
     serverId?: string
   ) => Promise<MockServer | null>
+  /**
+   * Save a real response as a mock example. Appends to the matching route
+   * (same method + path pattern) or creates the route. Creates a server when
+   * `serverId` is omitted.
+   */
+  addExampleFromResponse: (
+    request: ApiRequest,
+    response: ApiExecutionResult,
+    serverId?: string
+  ) => Promise<{ server: MockServer; route: MockRoute; created: boolean } | null>
 }
 
 export const useMockServerStore = create<MockServerState>((set, get) => ({
@@ -152,7 +167,7 @@ export const useMockServerStore = create<MockServerState>((set, get) => ({
 
   async importCollection(collection, createNew = true, serverId) {
     const requests = collection.requests
-      .filter((r) => r.requestType === 'http' && r.url.trim())
+      .filter((r) => (r.requestType ?? 'http') === 'http' && r.url.trim())
       .map((r) => ({
         id: r.id,
         method: r.method,
@@ -195,5 +210,40 @@ export const useMockServerStore = create<MockServerState>((set, get) => ({
     if (!ok) return null
     const server = get().servers.find((s) => s.id === targetServerId)
     return server ?? null
+  },
+
+  async addExampleFromResponse(request, response, serverId) {
+    if (get().servers.length === 0) await get().refresh()
+    let targetId = serverId
+    if (!targetId) {
+      const created = await get().createServer()
+      if (!created) return null
+      targetId = created.id
+    }
+    const server = get().servers.find((s) => s.id === targetId)
+    if (!server) return null
+
+    const existing = findMockRouteForRequest(server.routes, request.method, request.url)
+    const base = `${response.status} ${response.statusText || 'Example'}`.trim()
+    const example = mockResponseFromExecution(response, uniqueMockResponseName(existing, base))
+
+    let route: MockRoute
+    if (existing) {
+      route = { ...existing, responses: [...existing.responses, example] }
+    } else {
+      route = mockRouteFromRequest({
+        method: request.method,
+        url: request.url,
+        name: request.name,
+        description: request.description
+      })
+      route.responses = [example]
+      route.activeResponseId = example.id
+    }
+
+    const ok = await get().upsertRoute(server.id, route)
+    if (!ok) return null
+    const saved = get().servers.find((s) => s.id === server.id) ?? server
+    return { server: saved, route, created: !existing }
   }
 }))

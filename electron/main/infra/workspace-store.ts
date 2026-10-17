@@ -46,7 +46,7 @@ export class WorkspaceStore {
     const primary = this.readEnvelope(primaryPath)
 
     if (primary.status === 'newer') {
-      throw new Error('This workspace was saved by a newer version of APIMaster. It was left untouched.')
+      throw new Error('This workspace was saved by a newer version of Shurikly. It was left untouched.')
     }
     if (primary.status === 'ok') {
       return { payload: primary.payload, source: 'primary', restored: false, encrypted: primary.encrypted }
@@ -85,7 +85,7 @@ export class WorkspaceStore {
     if (existsSync(primaryPath)) {
       const existing = this.readEnvelope(primaryPath)
       if (existing.status === 'newer') {
-        throw new Error('This workspace was saved by a newer version of APIMaster. It was left untouched.')
+        throw new Error('This workspace was saved by a newer version of Shurikly. It was left untouched.')
       }
       if (existing.status === 'ok') copyFileSync(primaryPath, backupPath)
       if (existing.status === 'corrupt') this.quarantine(primaryPath)

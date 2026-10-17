@@ -140,7 +140,9 @@ class MockServerManager {
         name: req.name,
         description: req.description,
         sourceRequestId: req.id,
-        sourceCollectionId: input.collectionId
+        sourceCollectionId: input.collectionId,
+        exampleBody: req.exampleBody,
+        exampleStatus: req.exampleStatus
       })
     )
 
@@ -286,7 +288,9 @@ class MockServerManager {
           res.on('end', () => {
             const buf = Buffer.concat(chunks)
             const contentType = res.headers['content-type']
-            const isBinary = (contentType ?? '').includes('octet-stream')
+            const ct = (contentType ?? '').toLowerCase()
+            const isBinary =
+              !ct.includes('svg') && /^(image|audio|video)\/|octet-stream|application\/(pdf|zip|gzip)/.test(ct)
             resolve({
               ok: (res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300,
               status: res.statusCode ?? 0,

@@ -25,7 +25,7 @@ export function claudeDesktopHasServer(configPath = claudeDesktopConfigPath()): 
   }
 }
 
-/** Merge the APIMaster entry into Claude Desktop's config without touching other servers. */
+/** Merge the Shurikly entry into Claude Desktop's config without touching other servers. */
 export function installClaudeDesktopServer(entry: McpLaunchSpec, configPath = claudeDesktopConfigPath()): void {
   mkdirSync(dirname(configPath), { recursive: true })
   let existing: Record<string, unknown> = {}

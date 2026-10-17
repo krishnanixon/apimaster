@@ -42,6 +42,7 @@ class McpManager {
       url,
       token: config.token,
       exposeSecrets: config.exposeSecrets,
+      exposeSourceCode: config.exposeSourceCode,
       error: this.error,
       rendererReady: mcpToolBridge.isReady(),
       claudeDesktop: {
@@ -68,12 +69,12 @@ class McpManager {
   installClaudeDesktop(): { configPath: string } {
     const script = mcpStdioScriptPath()
     if (!existsSync(script)) {
-      throw new Error('The MCP bridge is not built yet. Restart APIMaster, then try again.')
+      throw new Error('The MCP bridge is not built yet. Restart Shurikly, then try again.')
     }
     const entry = this.launchSpec()
     const configPath = claudeDesktopConfigPath()
     installClaudeDesktopServer(entry, configPath)
-    logger.info('Installed APIMaster in Claude Desktop MCP config', 'MCP')
+    logger.info('Installed Shurikly in Claude Desktop MCP config', 'MCP')
     return { configPath }
   }
 
@@ -83,7 +84,7 @@ class McpManager {
       args: [mcpStdioScriptPath()],
       env: {
         ELECTRON_RUN_AS_NODE: '1',
-        APIMASTER_MCP_CONFIG: mcpConfigPath()
+        SHURIKLY_MCP_CONFIG: mcpConfigPath()
       }
     }
   }
@@ -103,6 +104,7 @@ class McpManager {
         version: app.getVersion(),
         getToken: () => loadMcpConfig().token,
         exposeSecrets: () => loadMcpConfig().exposeSecrets,
+        exposeSourceCode: () => loadMcpConfig().exposeSourceCode,
         rendererReady: () => mcpToolBridge.isReady()
       })
       this.error = null

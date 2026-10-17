@@ -3,6 +3,14 @@ import type { SettingsDomainDefinition, SettingsTabId } from './types'
 /** Every setting domain in the app — single maintenance map */
 export const SETTINGS_DOMAINS: SettingsDomainDefinition[] = [
   {
+    id: 'profile',
+    label: 'Profile',
+    description: 'Your name, avatar, and a calendar of your activity.',
+    storage: { kind: 'userData', userDataFile: 'data/profile.json' },
+    centralized: true,
+    settingsTab: 'profile'
+  },
+  {
     id: 'appearance',
     label: 'Appearance',
     description: 'Theme mode, accent, layout, and visual customization.',
@@ -44,12 +52,14 @@ export const SETTINGS_DOMAINS: SettingsDomainDefinition[] = [
   },
   {
     id: 'api-studio',
-    label: 'APIMaster',
+    label: 'Shurikly',
     description: 'Collections, requests, and environments.',
     storage: { kind: 'userData', userDataFile: 'data/workspace.json' },
     centralized: false
   }
 ]
+
+export const DEFAULT_SETTINGS_TAB: SettingsTabId = 'profile'
 
 export const SETTINGS_TAB_IDS: SettingsTabId[] = SETTINGS_DOMAINS.filter(
   (d) => d.centralized && d.settingsTab
@@ -60,7 +70,7 @@ export function isSettingsTabId(value: string | null | undefined): value is Sett
 }
 
 export function normalizeSettingsTab(value: string | null | undefined): SettingsTabId {
-  return isSettingsTabId(value) ? value : 'ai'
+  return isSettingsTabId(value) ? value : DEFAULT_SETTINGS_TAB
 }
 
 export function getCentralizedSettingsDomains(): SettingsDomainDefinition[] {

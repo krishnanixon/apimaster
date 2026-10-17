@@ -169,6 +169,16 @@ export interface ApiRequest {
   folderId?: string | null
   /** Per-request timeout; defaults to 30s when omitted. */
   timeoutMs?: number
+  /**
+   * Set on requests created by the Code Scanner: which endpoint it came from (`key`) and a
+   * fingerprint of the structure it was generated with, so a re-scan can tell code changes from edits.
+   */
+  scan?: {
+    key: string
+    structure: string
+    /** Where the route is defined (paths relative to the collection's `source.rootPath`). */
+    sources?: Array<{ file: string; line: number }>
+  }
   updatedAt: string
 }
 
@@ -203,6 +213,8 @@ export interface ApiCollection {
   headers?: KeyValuePair[]
   /** Runs before each request in this collection (before folder/request scripts). */
   preRequestScript?: string
+  /** Set when the Code Scanner generated this collection; re-scans of `rootPath` can update it. */
+  source?: { kind: 'code-scanner'; rootPath: string; scannedAt: string }
   createdAt: string
   updatedAt: string
 }
@@ -261,6 +273,28 @@ export interface RunApiTestsInput {
   script: string
   request: ApiRequest
   response: ApiExecutionResult
+  /** Environment the script can read and change with `pm.environment` (e.g. save a login token). */
+  variables?: Record<string, string>
+  /** `pm.collectionVariables`; returned (possibly changed) only when passed in. */
+  collectionVariables?: Record<string, string>
+  /** `pm.globals`; returned (possibly changed) only when passed in. */
+  globals?: Record<string, string>
+}
+
+/** One `console.log/info/warn/error` call made by a script. */
+export interface ScriptLogEntry {
+  level: 'log' | 'info' | 'warn' | 'error'
+  message: string
+}
+
+export interface ApiTestRun {
+  results: ApiTestResult[]
+  /** Variables after the script ran; set only when `variables` was passed in. */
+  variables?: Record<string, string>
+  collectionVariables?: Record<string, string>
+  globals?: Record<string, string>
+  /** Console output, in call order; omitted when the script logged nothing. */
+  logs?: ScriptLogEntry[]
 }
 
 export interface ApiHistoryEntry {
@@ -356,11 +390,19 @@ export interface PostmanImportResult {
 export interface RunPreRequestScriptInput {
   script: string
   variables: Record<string, string>
+  /** `pm.collectionVariables`; returned (possibly changed) only when passed in. */
+  collectionVariables?: Record<string, string>
+  /** `pm.globals`; returned (possibly changed) only when passed in. */
+  globals?: Record<string, string>
 }
 
 export interface PreRequestScriptResult {
   variables: Record<string, string>
+  collectionVariables?: Record<string, string>
+  globals?: Record<string, string>
   error?: string
+  /** Console output, in call order; omitted when the script logged nothing. */
+  logs?: ScriptLogEntry[]
 }
 
 export interface CollectionRunnerOptions {

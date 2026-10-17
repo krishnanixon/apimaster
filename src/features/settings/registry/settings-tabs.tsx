@@ -1,15 +1,16 @@
 import type { ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Palette, Info, Sparkles, BarChart3, Cable } from 'lucide-react'
+import { Palette, Info, Sparkles, BarChart3, Cable, UserRound } from 'lucide-react'
 import type { SettingsTabId } from '@shared/settings'
 import { getCentralizedSettingsDomains } from '@shared/settings'
 import { AboutPanel } from '@/features/settings/panels/AboutPanel'
+import { ProfilePanel } from '@/features/settings/panels/ProfilePanel'
 import { UsageDashboard } from '@/features/settings/components/UsageDashboard'
 import { ThemeStudio } from '@/features/settings/components/ThemeStudio'
 import { AISettings } from '@/features/ai/components/AISettings'
 import { McpSettings } from '@/features/settings/components/McpSettings'
 
-export type SettingsGroupId = 'workspace' | 'intelligence' | 'help'
+export type SettingsGroupId = 'account' | 'workspace' | 'intelligence' | 'help'
 
 export interface SettingsTabEntry {
   id: SettingsTabId
@@ -23,6 +24,7 @@ export interface SettingsTabEntry {
 }
 
 export const SETTINGS_GROUPS: { id: SettingsGroupId; label: string }[] = [
+  { id: 'account', label: 'Account' },
   { id: 'workspace', label: 'Workspace' },
   { id: 'intelligence', label: 'AI' },
   { id: 'help', label: 'Help' }
@@ -37,6 +39,23 @@ const TAB_META: Record<
     Panel: ComponentType<{ global?: boolean }>
   }
 > = {
+  profile: {
+    icon: UserRound,
+    group: 'account',
+    keywords: [
+      'profile',
+      'name',
+      'avatar',
+      'photo',
+      'email',
+      'bio',
+      'activity',
+      'calendar',
+      'contributions',
+      'streak'
+    ],
+    Panel: () => <ProfilePanel />
+  },
   appearance: {
     icon: Palette,
     group: 'workspace',

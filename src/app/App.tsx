@@ -32,6 +32,12 @@ const AIEngineerPage = lazy(() =>
   }))
 )
 
+const CodeScannerPage = lazy(() =>
+  import('@/modules/code-scanner/pages/CodeScannerPage').then((m) => ({
+    default: m.CodeScannerPage
+  }))
+)
+
 const ApiStudioPage = lazy(() =>
   import('@/modules/api-studio/pages/ApiStudioPage').then((m) => ({
     default: m.ApiStudioPage
@@ -143,6 +149,14 @@ export function App() {
             element={
               <Suspense fallback={<BootScreen message="Loading…" />}>
                 <AIEngineerPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/code-scanner"
+            element={
+              <Suspense fallback={<BootScreen message="Loading…" />}>
+                <CodeScannerPage />
               </Suspense>
             }
           />

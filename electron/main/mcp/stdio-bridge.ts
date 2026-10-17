@@ -3,7 +3,7 @@
  *
  * Claude Desktop launches this file with ELECTRON_RUN_AS_NODE=1 (the Electron
  * binary acting as Node). It speaks newline-delimited JSON-RPC on stdio and
- * forwards each message to the APIMaster window's HTTP MCP server. If the app
+ * forwards each message to the Shurikly window's HTTP MCP server. If the app
  * is not running, it starts it from the launch command stored in mcp-server.json.
  *
  * stdout is reserved for protocol frames. Diagnostics go to stderr.
@@ -12,7 +12,9 @@ import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { USER_DATA_DIR } from '@shared/constants/product'
+
+/** Keep in sync with USER_DATA_DIR in shared/constants/product.ts. Inlined so this bridge stays one file. */
+const USER_DATA_DIR = 'shurikly'
 
 interface BridgeConfig {
   enabled: boolean
@@ -57,13 +59,13 @@ function defaultConfigPath(): string {
 }
 
 function log(message: string): void {
-  process.stderr.write(`[apimaster-mcp] ${message}\n`)
+  process.stderr.write(`[shurikly-mcp] ${message}\n`)
 }
 
 function readConfig(): BridgeConfig {
-  const path = process.env.APIMASTER_MCP_CONFIG || defaultConfigPath()
+  const path = process.env.SHURIKLY_MCP_CONFIG || defaultConfigPath()
   if (!existsSync(path)) {
-    throw new Error(`MCP config not found at ${path}. Open APIMaster and enable MCP in Settings.`)
+    throw new Error(`MCP config not found at ${path}. Open Shurikly and enable MCP in Settings.`)
   }
   const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<BridgeConfig>
   if (typeof parsed.port !== 'number' || typeof parsed.token !== 'string') {
@@ -104,7 +106,7 @@ let starting: Promise<void> | null = null
 async function ensureServer(config: BridgeConfig): Promise<void> {
   if (await isUp(config.port)) return
   if (!config.enabled) {
-    throw new Error('APIMaster MCP is turned off. Open the app and enable it in Settings → MCP.')
+    throw new Error('Shurikly MCP is turned off. Open the app and enable it in Settings → MCP.')
   }
   if (!starting) {
     starting = (async () => {
@@ -118,11 +120,11 @@ async function ensureServer(config: BridgeConfig): Promise<void> {
           env
         })
         child.unref()
-        log('Starting APIMaster')
+        log('Starting Shurikly')
       }
       const up = await waitUntilUp(config.port, 25_000)
       if (!up) {
-        throw new Error('APIMaster MCP server did not start. Open the app and enable MCP in Settings.')
+        throw new Error('Shurikly MCP server did not start. Open the app and enable MCP in Settings.')
       }
     })().finally(() => {
       starting = null
@@ -184,6 +186,11 @@ function isBridgeEntry(): boolean {
 
 async function main(): Promise<void> {
   let buffer = ''
+  let pending = 0
+  let stdinEnded = false
+  const maybeExit = () => {
+    if (stdinEnded && pending === 0) process.exit(0)
+  }
   process.stdin.setEncoding('utf8')
   process.stdin.on('data', (chunk: string) => {
     buffer += chunk
@@ -191,11 +198,20 @@ async function main(): Promise<void> {
     while (newline !== -1) {
       const line = buffer.slice(0, newline).replace(/\r$/, '')
       buffer = buffer.slice(newline + 1)
-      if (line.trim()) void handleLine(line)
+      if (line.trim()) {
+        pending += 1
+        void handleLine(line).finally(() => {
+          pending -= 1
+          maybeExit()
+        })
+      }
       newline = buffer.indexOf('\n')
     }
   })
-  process.stdin.on('end', () => process.exit(0))
+  process.stdin.on('end', () => {
+    stdinEnded = true
+    maybeExit()
+  })
 }
 
 if (isBridgeEntry()) {

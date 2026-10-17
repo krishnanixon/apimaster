@@ -106,7 +106,7 @@ export function StartScreen({ onImport }: StartScreenProps) {
 
       <div className="relative mx-auto flex w-full max-w-4xl flex-col gap-8 px-8 py-10">
         <header className="flex items-center gap-4">
-          <AppLogo className="h-11 w-11 rounded-xl shadow-soft" />
+          <AppLogo className="h-11 w-11 drop-shadow-sm" />
           <div className="min-w-0">
             <h1 className="text-xl font-semibold tracking-tight">{PRODUCT_NAME}</h1>
             <p className="truncate text-[13px] text-muted-foreground">{PRODUCT_TAGLINE}</p>
