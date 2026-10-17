@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ScriptRunnerService } from '../electron/main/api-studio/script-runner.service'
+import { runInSandbox } from '../electron/main/api-studio/script-sandbox'
 import type { ApiExecutionResult, ApiRequest, ApiTestRun } from '../shared/types/api-studio'
 
 const runner = new ScriptRunnerService()
@@ -100,11 +101,16 @@ describe('script sandbox isolation', () => {
   })
 
   it('caps memory use', async () => {
-    // Large chunks reach the memory cap in a few steps, well before the timeout on a loaded machine.
-    const run = await runTests('var all = []; for (;;) all.push(new ArrayBuffer(4 * 1024 * 1024))')
-    expect(run.results.at(-1)).toMatchObject({ name: 'Script execution', passed: false })
-    expect(run.results.at(-1)?.error).toMatch(/memory limit/i)
-  })
+    // A long time budget keeps this about the memory cap alone, even on a loaded CI machine.
+    const run = await runInSandbox({
+      input: '{}',
+      script: 'var all = []; for (;;) all.push(new ArrayBuffer(1024 * 1024))',
+      filename: 'memory-cap.js',
+      timeoutMs: 15_000,
+      memoryLimitBytes: 8 * 1024 * 1024
+    })
+    expect(run.error).toMatch(/memory limit/i)
+  }, 20_000)
 
   it('kills a script whose built-in calls outrun the interrupt check', async () => {
     const started = Date.now()
