@@ -22,6 +22,7 @@ import type {
 import { httpClientService } from '../api-studio/http-client.service'
 import { scriptRunnerService } from '../api-studio/script-runner.service'
 import { oauth2Service } from '../api-studio/oauth2.service'
+import { readBrunoFolder } from '../api-studio/bruno-folder'
 import { apiStudioAIService } from '../api-studio/api-studio-ai.service'
 import { logger } from '../infra/logger.service'
 import { activityRepository } from '../repositories/activity.repository'
@@ -127,6 +128,22 @@ export function registerApiStudioHandlers(getMainWindow: () => BrowserWindow | n
       return success(content)
     } catch (e) {
       return failure(e instanceof Error ? e.message : 'Failed to import collection')
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.API_STUDIO_PICK_IMPORT_FOLDER, async () => {
+    try {
+      const win = getMainWindow()
+      if (!win) return failure('No active window')
+      const result = await dialog.showOpenDialog(win, {
+        title: 'Import Bruno Collection',
+        buttonLabel: 'Import Folder',
+        properties: ['openDirectory']
+      })
+      if (result.canceled || !result.filePaths[0]) return success(null)
+      return success(await readBrunoFolder(result.filePaths[0]))
+    } catch (e) {
+      return failure(e instanceof Error ? e.message : 'Failed to read the folder')
     }
   })
 

@@ -37,6 +37,7 @@ import { migrateWorkspaceState, WORKSPACE_SCHEMA_VERSION } from '../services/gra
 import { applyRequestType, createDefaultGraphQLConfig } from '../services/graphql/model'
 import { buildIntrospectionRequest, readIntrospectionResult } from '../services/graphql/schema'
 import { importCollectionJson } from '../services/collectionImport'
+import type { ImportResult } from '@shared/lib/importers'
 
 const MAX_HISTORY = 200
 
@@ -205,6 +206,8 @@ interface ApiStudioState {
 
   // Import / export
   importCollection: (json: string) => string | null
+  /** Adds everything an importer produced (collections and environments); returns the first collection id. */
+  addImportResult: (result: ImportResult) => string | null
   /** Adds a collection built elsewhere (e.g. by the Code Scanner). */
   addCollection: (collection: ApiCollection) => void
   /** Replaces a collection by id (e.g. after a Code Scanner re-scan); unedited open tabs follow. */
@@ -1018,6 +1021,15 @@ export const useApiStudioStore = create<ApiStudioState>()(
           toast.error('Invalid Postman collection JSON')
           return null
         }
+      },
+
+      addImportResult: (result) => {
+        const environments: ApiEnvironment[] = result.environments.map((env) => ({ ...env, id: uuidv4() }))
+        set((state) => ({
+          collections: [...state.collections, ...result.collections],
+          environments: [...state.environments, ...environments]
+        }))
+        return result.collections[0]?.id ?? null
       },
 
       addCollection: (collection) => {

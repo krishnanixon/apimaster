@@ -1,0 +1,20 @@
+headers {
+  X-App: petstore-tests
+}
+
+auth {
+  mode: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+script:pre-request {
+  req.setHeader("X-Trace", Date.now().toString());
+}
+
+docs {
+  # Pet Store
+  Requests for the pet store demo API.
+}

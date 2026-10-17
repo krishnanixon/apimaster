@@ -61,7 +61,7 @@ unidentified developer, move it to Applications and run
 - **Collections**: folders, inherited auth and settings, request history, tabs
 - **Environments**: `{{variables}}` with per-environment values
 - **Scripts & tests**: pre-request scripts, assertions, and a collection runner with reports
-- **Import / export**: import Postman and cURL; export Postman, OpenAPI, cURL, and Markdown/HTML API docs
+- **Import / export**: import Postman, Insomnia (v4/v5), Bruno collection folders, HAR, OpenAPI and cURL, with format auto-detection and a summary of anything skipped; export Postman, OpenAPI, cURL, and Markdown/HTML API docs
 - **Mock Server**: local HTTP mock APIs from collections (`127.0.0.1` by default), parameterized routes, multiple responses per route (status, headers, body, delay) chosen by active/sequential/random mode or per request via `X-Mock-Response`, examples saved from real responses, templates, CORS, and request logs
 - **AI Engineer (Phase 1)**: analyze collections/OpenAPI, generate baseline (+ optional AI) tests, run via the existing request engine, failure analysis with evidence
 - **AI**: generate requests from plain English, explain responses, write tests, fix failing requests, and document collections (OpenAI, Anthropic, Gemini, OpenAI-compatible, or local Ollama)

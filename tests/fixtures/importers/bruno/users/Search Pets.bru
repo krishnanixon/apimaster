@@ -1,0 +1,26 @@
+meta {
+  name: Search Pets
+  type: graphql
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/graphql
+  body: graphql
+  auth: inherit
+}
+
+body:graphql {
+  query Search($term: String!) {
+    pets(search: $term) {
+      id
+      name
+    }
+  }
+}
+
+body:graphql:vars {
+  {
+    "term": "rex"
+  }
+}
