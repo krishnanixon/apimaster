@@ -101,7 +101,11 @@ export const IPC_CHANNELS = {
   MCP_INSTALL_CLAUDE: 'mcp:install-claude',
   MCP_READY: 'mcp:ready',
   MCP_INVOKE: 'mcp:invoke',
-  MCP_RESULT: 'mcp:result'
+  MCP_RESULT: 'mcp:result',
+  UPDATER_GET_STATUS: 'updater:get-status',
+  UPDATER_CHECK: 'updater:check',
+  UPDATER_INSTALL: 'updater:install',
+  UPDATER_STATUS: 'updater:status'
 } as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]

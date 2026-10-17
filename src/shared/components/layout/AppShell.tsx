@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/components/ui/
 import { isMacClient } from '@/shared/hooks/useMacWindowChrome'
 import { cn } from '@/shared/lib/utils'
 import { PRODUCT_NAME } from '@shared/constants/product'
+import { UpdatePrompt } from '@/features/updates/UpdatePrompt'
 
 type NavItem = { to: string; label: string; icon: LucideIcon; end?: boolean }
 
@@ -164,6 +165,7 @@ export function AppShell() {
           duration: 3500
         }}
       />
+      <UpdatePrompt />
     </div>
   )
 }
