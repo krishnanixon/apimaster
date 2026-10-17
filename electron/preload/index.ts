@@ -207,6 +207,17 @@ const api: ElectronAPI = {
       return () => ipcRenderer.removeListener(IPC_CHANNELS.MCP_INVOKE, handler)
     },
     result: (result) => ipcRenderer.send(IPC_CHANNELS.MCP_RESULT, result)
+  },
+  updater: {
+    getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATER_GET_STATUS),
+    check: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATER_CHECK),
+    install: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATER_INSTALL),
+    onStatus: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, status: Parameters<typeof callback>[0]) =>
+        callback(status)
+      ipcRenderer.on(IPC_CHANNELS.UPDATER_STATUS, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATER_STATUS, handler)
+    }
   }
 }
 try {

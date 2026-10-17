@@ -102,7 +102,58 @@ body explaining the reason. Reference issues with `Fixes #123` where it applies.
 ## Releases
 
 Maintainers tag releases as `vX.Y.Z`. The release workflow builds installers for each
-platform and attaches them to a draft GitHub release.
+platform and attaches them to a draft GitHub release. Bump `version` in `package.json` to
+match the tag: the app compares it with the latest release to decide whether to update.
+
+### Auto-update
+
+`electron-builder --publish always` uploads `latest.yml` (Windows), `latest-mac.yml` and
+`latest-linux.yml` next to the installers. The app reads them through `electron-updater`
+(`electron/main/infra/updater.service.ts`), on launch and every 6 hours, unless the user
+turns off **Settings → About → Check for updates automatically**:
+
+- Windows (NSIS) and Linux (AppImage) download the update in the background and offer
+  **Restart and update**.
+- macOS only shows a notice that links to the release page. Squirrel.Mac can't apply updates
+  to an ad-hoc signed app. Once the app is signed with a Developer ID (below), switching
+  macOS to `install` in `resolveUpdateMode` (`shared/settings/updates.ts`) turns on in-place
+  updates. The release already includes the `.zip` that Squirrel.Mac needs.
+
+Updates only see a release once its draft is published. Publish the release after all three
+platform jobs have finished, so every `latest*.yml` is in place.
+
+### macOS signing
+
+There is no Apple Developer account yet, so the Mac app is **ad-hoc signed**
+(`build/mac-signing.cjs`). Apple silicon refuses to run unsigned code, and macOS reports an
+unsigned download as "damaged". An ad-hoc signature fixes that. Gatekeeper still warns on
+first launch because the app isn't notarized: users right-click the app and choose **Open**,
+or allow it in System Settings → Privacy & Security.
+
+Check a local build with:
+
+```bash
+codesign -dv release/mac/Shurikly.app
+```
+
+It should print `Signature=adhoc`.
+
+To switch to Developer ID signing and notarization, add these repository secrets. No code
+changes are needed:
+
+| Secret | Value |
+| --- | --- |
+| `CSC_LINK` | Base64-encoded `.p12` export of the *Developer ID Application* certificate |
+| `CSC_KEY_PASSWORD` | Password for that `.p12` |
+| `APPLE_ID` | Apple ID email of the developer account |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for that Apple ID |
+| `APPLE_TEAM_ID` | 10-character team ID |
+
+With `CSC_LINK` set, the release workflow enables identity discovery, and
+`build/mac-signing.cjs` signs with the hardened runtime and `build/entitlements.mac.plist`.
+With the three `APPLE_*` secrets also set, electron-builder notarizes the app.
+The local `dist:mac` and `build:mac` scripts keep `CSC_IDENTITY_AUTO_DISCOVERY=false`, so they
+always produce an ad-hoc build. To sign locally, set `CSC_NAME` to the certificate name.
 
 ## License
 

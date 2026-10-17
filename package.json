@@ -73,6 +73,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cm6-graphql": "^0.2.2",
+    "electron-updater": "^6.8.9",
     "form-data": "^4.0.6",
     "framer-motion": "^12.42.2",
     "graphql": "^16.11.0",
@@ -121,6 +122,7 @@
     "vitest": "^3.2.4"
   },
   "build": {
+    "extends": "./build/mac-signing.cjs",
     "appId": "com.shurikly.app",
     "productName": "Shurikly",
     "copyright": "Copyright © 2026 Wansify Ventures",
@@ -165,10 +167,12 @@
       "shortcutName": "Shurikly"
     },
     "mac": {
-      "target": "dmg",
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.developer-tools",
-      "icon": "build/icon.icns",
-      "identity": null
+      "icon": "build/icon.icns"
     },
     "linux": {
       "target": "AppImage",

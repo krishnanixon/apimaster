@@ -1,4 +1,5 @@
 import type { AppSettings } from '@shared/types'
+import { DEFAULT_AUTO_UPDATE, resolveAutoUpdate } from '@shared/settings/updates'
 import { readJsonFile, writeJsonFile } from '../infra/json-store'
 
 const STORE_FILE = 'settings.json'
@@ -8,7 +9,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   aiModel: 'gpt-4o-mini',
   temperature: 0.7,
-  maxTokens: 4096
+  maxTokens: 4096,
+  autoUpdate: DEFAULT_AUTO_UPDATE
 }
 
 function normalize(raw: Partial<AppSettings>): AppSettings {
@@ -17,7 +19,8 @@ function normalize(raw: Partial<AppSettings>): AppSettings {
     theme: raw.theme === 'light' || raw.theme === 'dark' ? raw.theme : 'system',
     aiModel: typeof raw.aiModel === 'string' && raw.aiModel ? raw.aiModel : DEFAULT_SETTINGS.aiModel,
     temperature: Number.isFinite(raw.temperature) ? Number(raw.temperature) : DEFAULT_SETTINGS.temperature,
-    maxTokens: Number.isFinite(raw.maxTokens) ? Number(raw.maxTokens) : DEFAULT_SETTINGS.maxTokens
+    maxTokens: Number.isFinite(raw.maxTokens) ? Number(raw.maxTokens) : DEFAULT_SETTINGS.maxTokens,
+    autoUpdate: resolveAutoUpdate(raw.autoUpdate)
   }
 }
 

@@ -8,6 +8,7 @@ import { createMainWindow, getAppIconPath, getMainWindow, showMainWindow } from 
 import { APP_ID, PRODUCT_NAME } from '@shared/constants/product'
 import { mockServerManager } from './mock-server/mock-server-manager'
 import { mcpManager } from './mcp/mcp-manager'
+import { updaterService } from './infra/updater.service'
 
 app.setName(PRODUCT_NAME)
 
@@ -32,6 +33,7 @@ if (!app.requestSingleInstanceLock()) {
     aiManager.warmupOnStartup()
     createMainWindow()
     buildApplicationMenu()
+    void updaterService.start(() => getMainWindow())
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createMainWindow()

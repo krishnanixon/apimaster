@@ -45,7 +45,7 @@ export const SETTINGS_DOMAINS: SettingsDomainDefinition[] = [
   {
     id: 'about',
     label: 'About',
-    description: 'Product info and terms.',
+    description: 'Version, updates, product info, and terms.',
     storage: { kind: 'userData', userDataFile: 'settings.json' },
     centralized: true,
     settingsTab: 'about'

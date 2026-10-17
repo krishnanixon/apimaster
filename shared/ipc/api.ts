@@ -13,7 +13,8 @@ import type {
   IpcResult,
   UserProfile,
   UserProfilePatch,
-  LogEntry
+  LogEntry,
+  UpdateStatus
 } from '../types'
 import type { BugReport, CreateBugReportInput } from '../types/diagnostics'
 import type { WorkspaceLoadResult, WorkspaceSaveResult } from '../lib/workspace-document'
@@ -250,6 +251,14 @@ export interface ElectronAPI {
     ready: (ready?: boolean) => Promise<IpcResult>
     onInvoke: (callback: (message: McpInvokeMessage) => void) => () => void
     result: (result: McpInvokeResult) => void
+  }
+  updater: {
+    getStatus: () => Promise<IpcResult<UpdateStatus>>
+    /** Checks GitHub releases now (allowed even when automatic updates are off — the user asked). */
+    check: () => Promise<IpcResult<UpdateStatus>>
+    /** Quits and installs a downloaded update (Windows/Linux only). */
+    install: () => Promise<IpcResult>
+    onStatus: (callback: (status: UpdateStatus) => void) => () => void
   }
 }
 

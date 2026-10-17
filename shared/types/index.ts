@@ -6,6 +6,8 @@ export interface AppSettings {
   aiModel: string
   temperature: number
   maxTokens: number
+  /** Check GitHub releases on launch and every 6 hours (Settings → About). */
+  autoUpdate: boolean
 }
 
 /** A single recorded OpenAI API call (token usage + estimated cost). */
@@ -95,3 +97,4 @@ export * from './mock-server'
 export * from './ai-engineer'
 export * from './profile'
 export * from './code-scanner'
+export * from './updates'

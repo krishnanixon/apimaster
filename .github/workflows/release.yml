@@ -39,8 +39,51 @@ jobs:
       - name: Build app
         run: npm run build
 
+      # Without a certificate the Mac app is ad-hoc signed (build/mac-signing.cjs). Adding the
+      # CSC_LINK / CSC_KEY_PASSWORD secrets switches to Developer ID signing, and APPLE_ID /
+      # APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID add notarization. Secrets are exported only
+      # when set: electron-builder treats an empty CSC_LINK as a certificate to import.
+      - name: Configure macOS signing
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          export_env() {
+            local delimiter="EOF_$(openssl rand -hex 8)"
+            { echo "$1<<$delimiter"; printf '%s\n' "$2"; echo "$delimiter"; } >> "$GITHUB_ENV"
+          }
+          if [ -z "$CSC_LINK" ]; then
+            echo "No Developer ID certificate: the app will be ad-hoc signed."
+            exit 0
+          fi
+          echo "Developer ID certificate found: signing with it."
+          export_env CSC_LINK "$CSC_LINK"
+          export_env CSC_KEY_PASSWORD "$CSC_KEY_PASSWORD"
+          # Let electron-builder pick the identity from the imported certificate.
+          export_env CSC_IDENTITY_AUTO_DISCOVERY true
+          if [ -n "$APPLE_ID" ] && [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
+            echo "Apple ID credentials found: the app will be notarized."
+            export_env APPLE_ID "$APPLE_ID"
+            export_env APPLE_APP_SPECIFIC_PASSWORD "$APPLE_APP_SPECIFIC_PASSWORD"
+            export_env APPLE_TEAM_ID "$APPLE_TEAM_ID"
+          fi
+
+      # --publish always uploads the installers plus the latest*.yml files electron-updater
+      # reads (latest.yml on Windows, latest-mac.yml, latest-linux.yml).
       - name: Package and upload to draft release
+        shell: bash
         run: npx electron-builder ${{ matrix.args }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ env.CSC_IDENTITY_AUTO_DISCOVERY || 'false' }}
+
+      - name: Check update metadata
+        shell: bash
+        run: |
+          ls release/latest*.yml
+          cat release/latest*.yml

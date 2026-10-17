@@ -4,6 +4,15 @@ All notable product changes and behavior changes are recorded here.
 
 ## Unreleased
 
+- Auto-update: the app checks GitHub releases on launch and every 6 hours. On Windows and
+  Linux (AppImage) it downloads updates in the background and offers **Restart and update**.
+  On macOS it shows a notice with a download link. **Settings → About** shows the installed
+  version (it was hard-coded as v1.0.0), a **Check for updates** button, and a toggle for
+  automatic checks. With the toggle off, the app makes no update requests unless you click
+  the button.
+- macOS builds are ad-hoc signed, so Apple silicon Macs no longer report the app as
+  "damaged". Developer ID signing and notarization turn on through CI secrets
+  (see CONTRIBUTING.md → Releases). Mac releases now include a `.zip` as well as the `.dmg`.
 - Security: pre-request and test scripts now run in a QuickJS (WebAssembly) sandbox on a
   worker thread instead of `node:vm`. A script from an imported collection could previously
   reach the main process through `pm.test.constructor('return process')()` and run arbitrary

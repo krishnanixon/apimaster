@@ -20,6 +20,8 @@ import { registerMockServerHandlers } from './mock-server.handlers'
 import { registerAiEngineerHandlers } from './ai-engineer.handlers'
 import { registerMcpHandlers } from './mcp.handlers'
 import { registerCodeScannerHandlers } from './code-scanner.handlers'
+import { registerUpdaterHandlers } from './updater.handlers'
+import { updaterService } from '../infra/updater.service'
 
 function success<T>(data?: T): IpcResult<T> {
   return { success: true, data }
@@ -78,7 +80,9 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, async (_e, data) => {
     try {
+      const before = await settingsRepository.get()
       const settings = await settingsRepository.update(data)
+      if (settings.autoUpdate !== before.autoUpdate) updaterService.setEnabled(settings.autoUpdate)
       return success(settings)
     } catch (e) {
       return failure(e instanceof Error ? e.message : 'Failed to update settings')
@@ -312,4 +316,5 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
   registerAiEngineerHandlers()
   registerCodeScannerHandlers(getMainWindow)
   registerMcpHandlers(getMainWindow)
+  registerUpdaterHandlers()
 }
