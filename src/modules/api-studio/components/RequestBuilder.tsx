@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Tabs, TabsContent } from '@/shared/components/ui/tabs'
 import { EmptyState } from '@/shared/components/ui/empty-state'
 import { Webhook } from 'lucide-react'
@@ -50,6 +50,38 @@ const GRAPHQL_TABS: { id: RequestTab; label: string }[] = [
   { id: 'tests', label: 'Tests' },
   { id: 'settings', label: 'Settings' }
 ]
+
+/**
+ * WebSocket requests: the message log plus the parts of the request that apply to the
+ * upgrade handshake (sent from the main process, so headers, auth and cookies work).
+ */
+function WebSocketSections({ sections }: { sections: Array<{ id: string; label: string; badge?: string | null; content: ReactNode }> }) {
+  const [active, setActive] = useState(sections[0]?.id)
+  const current = sections.find((section) => section.id === active) ?? sections[0]
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center overflow-x-auto border-b border-border/60 px-1">
+        {sections.map((section) => (
+          <button
+            key={section.id}
+            type="button"
+            onClick={() => setActive(section.id)}
+            className={cn(
+              'flex shrink-0 items-center gap-1 border-b-2 px-2.5 py-2 text-xs transition-colors',
+              section.id === current?.id
+                ? 'border-foreground text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            )}
+          >
+            {section.label}
+            {section.badge && <span className="text-[10px] text-muted-foreground">{section.badge}</span>}
+          </button>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">{current?.content}</div>
+    </div>
+  )
+}
 
 function enabledCount(pairs: { enabled: boolean; key: string }[]): number {
   return pairs.filter((p) => p.enabled && p.key.trim()).length
@@ -155,15 +187,68 @@ export function RequestBuilder({ tabId }: { tabId: string }) {
 
   if (isWebSocket) {
     return (
-      <WebSocketPanel
-        url={request.url}
-        connected={tab.wsConnected}
-        connecting={tab.wsConnecting}
-        messages={tab.wsMessages}
-        onConnect={() => void connectWebSocket(tabId)}
-        onDisconnect={() => disconnectWebSocket(tabId)}
-        onSend={(message) => sendWebSocketMessage(tabId, message)}
-        onClear={() => clearWebSocketMessages(tabId)}
+      <WebSocketSections
+        sections={[
+          {
+            id: 'messages',
+            label: 'Messages',
+            content: (
+              <WebSocketPanel
+                url={request.url}
+                connected={tab.wsConnected}
+                connecting={tab.wsConnecting}
+                messages={tab.wsMessages}
+                onConnect={() => void connectWebSocket(tabId)}
+                onDisconnect={() => disconnectWebSocket(tabId)}
+                onSend={(message) => sendWebSocketMessage(tabId, message)}
+                onClear={() => clearWebSocketMessages(tabId)}
+              />
+            )
+          },
+          {
+            id: 'params',
+            label: 'Params',
+            badge: tabBadge(request, 'params', collection),
+            content: (
+              <ParamsTab
+                params={request.queryParams}
+                pathParams={request.pathParams ?? []}
+                onChange={(queryParams) => updateDraft(tabId, { queryParams })}
+                onPathParamsChange={(pathParams) => updateDraft(tabId, { pathParams })}
+              />
+            )
+          },
+          {
+            id: 'headers',
+            label: 'Headers',
+            badge: tabBadge(request, 'headers', collection),
+            content: (
+              <HeadersTab
+                headers={request.headers}
+                onChange={(headers) => updateDraft(tabId, { headers })}
+                inheritedHeaders={inheritedHeaders}
+              />
+            )
+          },
+          {
+            id: 'auth',
+            label: 'Auth',
+            badge: tabBadge(request, 'auth', collection),
+            content: <AuthTab auth={request.auth} onChange={(auth) => updateDraft(tabId, { auth })} inherit={inherit} />
+          },
+          {
+            id: 'settings',
+            label: 'Settings',
+            content: (
+              <SettingsTab
+                timeoutMs={request.timeoutMs ?? 30_000}
+                onChange={(timeoutMs) => updateDraft(tabId, { timeoutMs })}
+                network={request.network}
+                onNetworkChange={(network) => updateDraft(tabId, { network })}
+              />
+            )
+          }
+        ]}
       />
     )
   }
@@ -311,6 +396,8 @@ export function RequestBuilder({ tabId }: { tabId: string }) {
             <SettingsTab
               timeoutMs={request.timeoutMs ?? 30_000}
               onChange={(timeoutMs) => updateDraft(tabId, { timeoutMs })}
+              network={request.network}
+              onNetworkChange={(network) => updateDraft(tabId, { network })}
             />
           </TabsContent>
         </div>

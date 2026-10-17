@@ -22,6 +22,7 @@ import { registerMcpHandlers } from './mcp.handlers'
 import { registerCodeScannerHandlers } from './code-scanner.handlers'
 import { registerUpdaterHandlers } from './updater.handlers'
 import { updaterService } from '../infra/updater.service'
+import { registerNetworkHandlers } from './network.handlers'
 
 function success<T>(data?: T): IpcResult<T> {
   return { success: true, data }
@@ -312,6 +313,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
   })
 
   registerApiStudioHandlers(getMainWindow)
+  registerNetworkHandlers(getMainWindow)
   registerMockServerHandlers()
   registerAiEngineerHandlers()
   registerCodeScannerHandlers(getMainWindow)

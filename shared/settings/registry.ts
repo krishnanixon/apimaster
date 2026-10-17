@@ -19,6 +19,14 @@ export const SETTINGS_DOMAINS: SettingsDomainDefinition[] = [
     settingsTab: 'appearance'
   },
   {
+    id: 'network',
+    label: 'Network',
+    description: 'Proxy, SSL certificates, client certificates, and the cookie jar.',
+    storage: { kind: 'userData', userDataFile: 'data/network.json' },
+    centralized: true,
+    settingsTab: 'network'
+  },
+  {
     id: 'ai',
     label: 'AI',
     description: 'Provider mode, models, API keys, and fallbacks.',

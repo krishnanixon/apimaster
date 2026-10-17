@@ -5,7 +5,7 @@ describe('settings registry', () => {
   it('lists centralized and in-place domains', () => {
     const centralized = SETTINGS_DOMAINS.filter((d) => d.centralized)
     const inPlace = SETTINGS_DOMAINS.filter((d) => !d.centralized)
-    expect(centralized.map((d) => d.settingsTab)).toEqual(['profile', 'appearance', 'ai', 'mcp', 'usage', 'about'])
+    expect(centralized.map((d) => d.settingsTab)).toEqual(['profile', 'appearance', 'network', 'ai', 'mcp', 'usage', 'about'])
     expect(inPlace.some((d) => d.id === 'api-studio')).toBe(true)
   })
 

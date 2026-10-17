@@ -84,8 +84,12 @@ interface RunnerState {
   report: CollectionRunnerReport | null
 }
 
-/** Live WebSocket connections — not persisted. */
-const wsSockets = new Map<string, WebSocket>()
+/**
+ * Live WebSocket connections — not persisted. The sockets live in the main process; the
+ * renderer keeps tab → connection id, and connection id → tab until its close event arrives.
+ */
+const wsConnectionByTab = new Map<string, string>()
+const wsTabByConnection = new Map<string, string>()
 
 interface ApiStudioState {
   collections: ApiCollection[]
@@ -237,11 +241,70 @@ function createTabState(request: ApiRequest, collectionId?: string): TabState {
 }
 
 function closeWebSocketForTab(tabId: string): void {
-  const socket = wsSockets.get(tabId)
-  if (socket) {
-    socket.close()
-    wsSockets.delete(tabId)
+  const connectionId = wsConnectionByTab.get(tabId)
+  if (connectionId) {
+    wsConnectionByTab.delete(tabId)
+    void window.electronAPI.apiStudio.websocket.close(connectionId)
   }
+}
+
+type StoreSet = (fn: (state: ApiStudioState) => Partial<ApiStudioState>) => void
+let wsEventsBound = false
+
+function appendWsMessage(set: StoreSet, tabId: string, message: WebSocketMessage, patch: Partial<TabState> = {}): void {
+  set((state) => ({
+    tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, ...patch, wsMessages: [...t.wsMessages, message] } : t))
+  }))
+}
+
+/** Routes main-process WebSocket events to the tab that owns the connection. */
+function bindWebSocketEvents(set: StoreSet): void {
+  if (wsEventsBound) return
+  wsEventsBound = true
+  window.electronAPI.apiStudio.websocket.onEvent((event) => {
+    const tabId = wsTabByConnection.get(event.connectionId)
+    if (!tabId) return
+    const current = wsConnectionByTab.get(tabId) === event.connectionId
+    const timestamp = new Date().toISOString()
+
+    switch (event.type) {
+      case 'open':
+        if (current) appendWsMessage(set, tabId, { direction: 'system', data: 'Connected', timestamp }, { wsConnecting: false, wsConnected: true })
+        break
+      case 'message':
+        if (current) {
+          appendWsMessage(set, tabId, {
+            direction: 'received',
+            data: event.binary ? `[binary, base64] ${event.data}` : event.data,
+            timestamp
+          })
+        }
+        break
+      case 'error': {
+        if (!current) break
+        const detail = event.networkError
+          ? `${event.networkError.title}${event.networkError.hint ? ` — ${event.networkError.hint}` : ''}`
+          : event.message
+        toast.error(event.networkError?.title ?? 'WebSocket error')
+        appendWsMessage(set, tabId, { direction: 'system', data: `Error: ${detail}`, timestamp })
+        break
+      }
+      case 'close': {
+        wsTabByConnection.delete(event.connectionId)
+        // A newer connection replaced this one: its close is not news for the tab.
+        if (wsConnectionByTab.has(tabId) && !current) break
+        if (current) wsConnectionByTab.delete(tabId)
+        const detail = event.code !== 1000 && event.code !== 1005 ? ` (${event.code}${event.reason ? `: ${event.reason}` : ''})` : ''
+        appendWsMessage(
+          set,
+          tabId,
+          { direction: 'system', data: `Disconnected${detail}`, timestamp },
+          { wsConnecting: false, wsConnected: false }
+        )
+        break
+      }
+    }
+  })
 }
 
 function findCollection(collections: ApiCollection[], collectionId?: string): ApiCollection | undefined {
@@ -1073,10 +1136,9 @@ export const useApiStudioStore = create<ApiStudioState>()(
           )
         }))
 
-        let url = tab.request.url.trim()
-        if (!/^wss?:\/\//i.test(url)) {
-          url = `ws://${url.replace(/^https?:\/\//i, '')}`
-        }
+        // A bare `host:port/path` means ws:// (prepareRequest would default it to https://).
+        const rawUrl = tab.request.url.trim()
+        const explicitScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(rawUrl) || rawUrl.startsWith('{{')
 
         try {
           let variables: Record<string, string> | undefined
@@ -1091,70 +1153,28 @@ export const useApiStudioStore = create<ApiStudioState>()(
             return
           }
 
-          const withVars = variables
-            ? prepareRequest(tab.request, {
-                variables,
-                collection: findCollection(get().collections, tab.collectionId)
-              }).url
-            : url
-          const socket = new WebSocket(withVars)
-
-          socket.onopen = () => {
-            wsSockets.set(tabId, socket)
+          const collection = findCollection(get().collections, tab.collectionId)
+          const resolved = prepareRequest(tab.request, { variables, collection, timeoutMs: tab.request.timeoutMs })
+          const url = explicitScheme ? resolved.url : resolved.url.replace(/^https:\/\//i, 'ws://')
+          bindWebSocketEvents(set)
+          const connectionId = uuidv4()
+          wsConnectionByTab.set(tabId, connectionId)
+          wsTabByConnection.set(connectionId, tabId)
+          const result = await window.electronAPI.apiStudio.websocket.connect({
+            connectionId,
+            url,
+            headers: resolved.headers,
+            params: resolved.params,
+            timeoutMs: resolved.timeoutMs,
+            network: resolved.network
+          })
+          if (!result.success) {
+            if (wsConnectionByTab.get(tabId) === connectionId) wsConnectionByTab.delete(tabId)
+            wsTabByConnection.delete(connectionId)
             set((state) => ({
-              tabs: state.tabs.map((t) =>
-                t.id === tabId
-                  ? {
-                      ...t,
-                      wsConnecting: false,
-                      wsConnected: true,
-                      wsMessages: [
-                        ...t.wsMessages,
-                        { direction: 'system', data: 'Connected', timestamp: new Date().toISOString() }
-                      ]
-                    }
-                  : t
-              )
+              tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, wsConnecting: false } : t))
             }))
-          }
-
-          socket.onmessage = (event) => {
-            set((state) => ({
-              tabs: state.tabs.map((t) =>
-                t.id === tabId
-                  ? {
-                      ...t,
-                      wsMessages: [
-                        ...t.wsMessages,
-                        { direction: 'received', data: String(event.data), timestamp: new Date().toISOString() }
-                      ]
-                    }
-                  : t
-              )
-            }))
-          }
-
-          socket.onerror = () => {
-            toast.error('WebSocket error')
-          }
-
-          socket.onclose = () => {
-            wsSockets.delete(tabId)
-            set((state) => ({
-              tabs: state.tabs.map((t) =>
-                t.id === tabId
-                  ? {
-                      ...t,
-                      wsConnecting: false,
-                      wsConnected: false,
-                      wsMessages: [
-                        ...t.wsMessages,
-                        { direction: 'system', data: 'Disconnected', timestamp: new Date().toISOString() }
-                      ]
-                    }
-                  : t
-              )
-            }))
+            toast.error(result.error ?? 'Failed to connect WebSocket')
           }
         } catch {
           set((state) => ({
@@ -1174,12 +1194,15 @@ export const useApiStudioStore = create<ApiStudioState>()(
       },
 
       sendWebSocketMessage: (tabId, message) => {
-        const socket = wsSockets.get(tabId)
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
+        const connectionId = wsConnectionByTab.get(tabId)
+        const tab = get().tabs.find((t) => t.id === tabId)
+        if (!connectionId || !tab?.wsConnected) {
           toast.error('WebSocket is not connected')
           return
         }
-        socket.send(message)
+        void window.electronAPI.apiStudio.websocket.send(connectionId, message).then((result) => {
+          if (!result.success) toast.error(result.error ?? 'Failed to send the message')
+        })
         set((state) => ({
           tabs: state.tabs.map((t) =>
             t.id === tabId

@@ -239,6 +239,48 @@ export class ApiKeyService {
     return statuses
   }
 
+  /** Path for a non-provider secret (proxy password, certificate passphrase, ...). */
+  private namedSecretPath(name: string): string {
+    if (!/^[a-z0-9][a-z0-9._-]{0,127}$/i.test(name)) throw new Error('Invalid secret name')
+    return join(app.getPath('userData'), 'secrets', `${name}.enc`)
+  }
+
+  /** Stores a secret with safeStorage, in the same envelope format as provider keys. */
+  setNamedSecret(name: string, value: string): void {
+    if (!value) throw new Error('Secret cannot be empty')
+    if (!this.isEncryptionAvailable()) {
+      throw new Error('Secure OS credential storage is unavailable; the secret was not saved')
+    }
+    const path = this.namedSecretPath(name)
+    mkdirSync(dirname(path), { recursive: true })
+    const envelope: ApiKeyEnvelope = {
+      version: 2,
+      purpose: `secret:${name}`,
+      scheme: 'electron-safe-storage',
+      payload: safeStorage.encryptString(value).toString('base64')
+    }
+    writeFileSync(path, `${ENVELOPE_PREFIX}${JSON.stringify(envelope)}`, { mode: 0o600 })
+  }
+
+  getNamedSecret(name: string): string | null {
+    const path = this.namedSecretPath(name)
+    if (!existsSync(path)) return null
+    try {
+      return this.decodeProviderEnvelope(readFileSync(path), `secret:${name}`)
+    } catch {
+      return null
+    }
+  }
+
+  hasNamedSecret(name: string): boolean {
+    return existsSync(this.namedSecretPath(name))
+  }
+
+  deleteNamedSecret(name: string): void {
+    const path = this.namedSecretPath(name)
+    if (existsSync(path)) unlinkSync(path)
+  }
+
   private decodeProviderEnvelope(data: Buffer, expectedPurpose: string): string {
     const text = data.toString('utf8')
     if (!text.startsWith(ENVELOPE_PREFIX)) throw new Error('Unsupported API key storage format')

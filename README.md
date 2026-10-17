@@ -58,6 +58,9 @@ unidentified developer, move it to Applications and run
 - **GraphQL**: endpoint, query, variables, headers, and auth; schema introspection, schema-aware autocomplete and validation, operation selection, and a data/errors response view
 - **Response inspection**: JSON tree with filter, JSONPath queries (`$..items[?(@.price < 10)]`), copy path/value, copy as JSON, find-in-body, save to file, large-response guards, and image/SVG/PDF/audio/video previews with a hex view for other binary bodies
 - **Compare**: diff status, headers, JSON (path-level), text, response time, and size against the previous run, a pinned baseline, or another tab — including what changed in the request
+- **Network**: system or custom HTTP/HTTPS proxy with auth and a bypass list, SSL verification on/off (globally or per request), custom CA files, the OS trust store, and client certificates (PEM or PFX) per host
+- **Cookies**: a persistent cookie jar shared by requests, redirects, WebSockets, collection runs and MCP tools, with a cookie manager to view, edit and delete cookies by domain
+- **WebSocket**: connections run in the main process, so custom headers, auth, cookies, the proxy and TLS settings apply
 - **Collections**: folders, inherited auth and settings, request history, tabs
 - **Environments**: `{{variables}}` with per-environment values
 - **Scripts & tests**: pre-request scripts, assertions, and a collection runner with reports
@@ -102,7 +105,7 @@ tests/                  vitest
 ## Privacy
 
 Everything stays on your machine. There is no account, sync service, analytics, or
-telemetry. Requests go straight from your computer to the URLs you enter. AI features
+telemetry. Requests go straight from your computer to the URLs you enter (or through the proxy you set). AI features
 are off until you add your own provider key (or run a local model with Ollama), and
 data is sent to that provider only when you trigger an AI action.
 
