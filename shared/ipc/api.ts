@@ -166,6 +166,8 @@ export interface ElectronAPI {
     runPreRequest: (input: RunPreRequestScriptInput) => Promise<IpcResult<PreRequestScriptResult>>
     saveResponse: (input: SaveResponseFileInput) => Promise<IpcResult<string>>
     pickImportCollection: () => Promise<IpcResult<string>>
+    /** Bruno collection folder: `bruno.json` and `.bru` files; `null` when the picker was cancelled. */
+    pickImportFolder: () => Promise<IpcResult<{ name: string; files: Array<{ path: string; content: string }> } | null>>
     exportCollection: (input: ExportCollectionFileInput) => Promise<IpcResult<string>>
     oauth2: {
       authorize: (input: OAuth2AuthorizeInput) => Promise<IpcResult<{ code: string; state?: string }>>

@@ -1,0 +1,227 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-09-30T10:12:44.112Z",
+  "__export_source": "insomnia.desktop.app:v8.6.1",
+  "resources": [
+    {
+      "_id": "req_list_orders",
+      "parentId": "fld_orders",
+      "modified": 1727690000000,
+      "created": 1727600000000,
+      "url": "{{ _.baseUrl }}/orders?status=open",
+      "name": "List orders",
+      "description": "Paged list of orders",
+      "method": "GET",
+      "body": {},
+      "parameters": [
+        { "id": "pair_1", "name": "page", "value": "1", "description": "" },
+        { "id": "pair_2", "name": "limit", "value": "50", "disabled": true }
+      ],
+      "headers": [{ "name": "Accept", "value": "application/json" }],
+      "authentication": {},
+      "metaSortKey": -1727600000000,
+      "isPrivate": false,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    },
+    {
+      "_id": "fld_orders",
+      "parentId": "wrk_shop",
+      "modified": 1727690000000,
+      "created": 1727600000000,
+      "name": "Orders",
+      "description": "",
+      "environment": {},
+      "environmentPropertyOrder": null,
+      "metaSortKey": -1727600000001,
+      "authentication": { "type": "bearer", "token": "{{ _.token }}", "prefix": "" },
+      "headers": [{ "name": "X-Tenant", "value": "{{ _.tenant }}" }],
+      "_type": "request_group"
+    },
+    {
+      "_id": "req_create_order",
+      "parentId": "fld_orders",
+      "url": "{{ _.baseUrl }}/orders",
+      "name": "Create order",
+      "method": "POST",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"sku\": \"ABC-123\",\n  \"quantity\": {{ _.qty }}\n}"
+      },
+      "parameters": [],
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "authentication": {},
+      "metaSortKey": -1727500000000,
+      "preRequestScript": "insomnia.environment.set('requestedAt', Date.now().toString());",
+      "afterResponseScript": "insomnia.test('created', () => {\n  insomnia.expect(insomnia.response.code).to.equal(201);\n});",
+      "_type": "request"
+    },
+    {
+      "_id": "fld_refunds",
+      "parentId": "fld_orders",
+      "name": "Refunds",
+      "environment": { "refundReason": "damaged" },
+      "metaSortKey": -1727400000000,
+      "_type": "request_group"
+    },
+    {
+      "_id": "req_refund",
+      "parentId": "fld_refunds",
+      "url": "{{ _.baseUrl }}/orders/:orderId/refunds",
+      "name": "Refund order",
+      "method": "POST",
+      "body": {
+        "mimeType": "application/x-www-form-urlencoded",
+        "params": [
+          { "name": "reason", "value": "{{ _.refundReason }}" },
+          { "name": "notify", "value": "true", "disabled": true }
+        ]
+      },
+      "pathParameters": [{ "name": "orderId", "value": "1001" }],
+      "headers": [],
+      "authentication": { "type": "ntlm", "username": "svc", "password": "x" },
+      "metaSortKey": -1727300000000,
+      "_type": "request"
+    },
+    {
+      "_id": "req_upload",
+      "parentId": "wrk_shop",
+      "url": "{{ _.baseUrl }}/products/import",
+      "name": "Upload catalogue",
+      "method": "PUT",
+      "body": {
+        "mimeType": "multipart/form-data",
+        "params": [
+          { "name": "file", "type": "file", "fileName": "/Users/sam/Downloads/catalogue.csv" },
+          { "name": "dryRun", "value": "true" }
+        ]
+      },
+      "headers": [{ "name": "Content-Type", "value": "multipart/form-data" }],
+      "authentication": { "type": "basic", "username": "admin", "password": "{{ _.adminPassword }}" },
+      "metaSortKey": -1727200000000,
+      "_type": "request"
+    },
+    {
+      "_id": "req_graphql",
+      "parentId": "wrk_shop",
+      "url": "{{ _.baseUrl }}/graphql",
+      "name": "Product query",
+      "method": "POST",
+      "body": {
+        "mimeType": "application/graphql",
+        "text": "{\"query\":\"query Product($id: ID!) { product(id: $id) { name price } }\",\"variables\":{\"id\":\"p1\"},\"operationName\":\"Product\"}"
+      },
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "authentication": { "type": "apikey", "key": "X-API-Key", "value": "{{ _.apiKey }}", "addTo": "header" },
+      "metaSortKey": -1727100000000,
+      "_type": "request"
+    },
+    {
+      "_id": "req_aws",
+      "parentId": "wrk_shop",
+      "url": "https://s3.eu-west-1.amazonaws.com/shop-assets?list-type=2",
+      "name": "List S3 assets",
+      "method": "GET",
+      "body": {},
+      "headers": [],
+      "authentication": {
+        "type": "iam",
+        "accessKeyId": "AKIAEXAMPLE",
+        "secretAccessKey": "{{ _.awsSecret }}",
+        "region": "eu-west-1",
+        "service": "s3",
+        "sessionToken": ""
+      },
+      "metaSortKey": -1727000000000,
+      "_type": "request"
+    },
+    {
+      "_id": "req_oauth",
+      "parentId": "wrk_shop",
+      "url": "{{ _.baseUrl }}/me",
+      "name": "Current user",
+      "method": "GET",
+      "body": {},
+      "headers": [{ "name": "X-Request-Id", "value": "{% uuid 'v4' %}" }],
+      "authentication": {
+        "type": "oauth2",
+        "grantType": "client_credentials",
+        "accessTokenUrl": "https://auth.example.com/oauth/token",
+        "clientId": "shop-cli",
+        "clientSecret": "{{ _.clientSecret }}",
+        "scope": "orders:read"
+      },
+      "metaSortKey": -1726900000000,
+      "_type": "request"
+    },
+    {
+      "_id": "greq_1",
+      "parentId": "wrk_shop",
+      "name": "Inventory stream",
+      "protoFileId": "pf_1",
+      "protoMethodName": "/inventory.Inventory/Watch",
+      "url": "grpc.example.com:443",
+      "_type": "grpc_request"
+    },
+    {
+      "_id": "ws-req_1",
+      "parentId": "wrk_shop",
+      "name": "Live prices",
+      "url": "wss://prices.example.com",
+      "_type": "websocket_request"
+    },
+    {
+      "_id": "wrk_shop",
+      "parentId": null,
+      "modified": 1727690000000,
+      "created": 1727600000000,
+      "name": "Shop API",
+      "description": "Orders, products and refunds",
+      "scope": "collection",
+      "_type": "workspace"
+    },
+    {
+      "_id": "env_base",
+      "parentId": "wrk_shop",
+      "name": "Base Environment",
+      "data": { "baseUrl": "http://localhost:4000", "tenant": "acme", "qty": 1, "auth": { "audience": "shop" } },
+      "dataPropertyOrder": { "&": ["baseUrl", "tenant", "qty", "auth"] },
+      "color": null,
+      "isPrivate": false,
+      "metaSortKey": 1727600000000,
+      "_type": "environment"
+    },
+    {
+      "_id": "env_staging",
+      "parentId": "env_base",
+      "name": "Staging",
+      "data": { "baseUrl": "https://staging.shop.example.com", "token": "stg-token" },
+      "color": "#7d69cb",
+      "isPrivate": false,
+      "metaSortKey": 1727600000001,
+      "_type": "environment"
+    },
+    {
+      "_id": "env_prod",
+      "parentId": "env_base",
+      "name": "Production",
+      "data": { "baseUrl": "https://shop.example.com", "tenant": "acme-prod" },
+      "isPrivate": true,
+      "metaSortKey": 1727600000002,
+      "_type": "environment"
+    },
+    {
+      "_id": "jar_1",
+      "parentId": "wrk_shop",
+      "name": "Default Jar",
+      "cookies": [],
+      "_type": "cookie_jar"
+    }
+  ]
+}

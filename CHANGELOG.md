@@ -39,6 +39,17 @@ All notable product changes and behavior changes are recorded here.
   query params and cookies and use the proxy and TLS settings. WebSocket requests gained
   Params, Headers, Auth and Settings sections next to the message log. Close codes and
   connection errors are shown in the log.
+- Import from Insomnia, Bruno and HAR. Insomnia v4 exports (JSON or YAML) and v5 YAML
+  collections bring workspaces, request groups as folders, requests, auth and environments
+  (each sub-environment merged over the base one). A Bruno collection folder (`bruno.json`,
+  nested `.bru` files, `folder.bru`/`collection.bru` settings, `environments/*.bru`) can be
+  picked or dropped; `bru.*`/`res.*` script basics and `assert` blocks become `pm` scripts,
+  and calls with no equivalent are kept under a comment. HAR 1.2 files become one request per
+  entry, grouped by host, with an option to skip images, CSS, JS and fonts.
+- The Import dialog detects the format of a dropped or pasted file (Postman, Insomnia, HAR,
+  OpenAPI, cURL, Shurikly backup) and shows what was imported and what was skipped, such as
+  unsupported auth types or WebSocket/gRPC requests. OpenAPI documents can now be imported
+  from the dialog too.
 - Security: pre-request and test scripts now run in a QuickJS (WebAssembly) sandbox on a
   worker thread instead of `node:vm`. A script from an imported collection could previously
   reach the main process through `pm.test.constructor('return process')()` and run arbitrary

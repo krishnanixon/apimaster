@@ -1,0 +1,31 @@
+meta {
+  name: Get Pet
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/pets/:petId?include=owner
+  body: none
+  auth: inherit
+}
+
+params:query {
+  include: owner
+  ~fields: name
+}
+
+params:path {
+  petId: {{petId}}
+}
+
+tests {
+  test("returns the pet", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().id).to.eql(Number(bru.getEnvVar("petId")));
+  });
+}
+
+docs {
+  Fetches one pet by id.
+}

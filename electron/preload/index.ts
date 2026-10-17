@@ -104,6 +104,7 @@ const api: ElectronAPI = {
     saveResponse: (input) =>
       ipcRenderer.invoke(IPC_CHANNELS.API_STUDIO_SAVE_RESPONSE, input),
     pickImportCollection: () => ipcRenderer.invoke(IPC_CHANNELS.API_STUDIO_PICK_IMPORT_COLLECTION),
+    pickImportFolder: () => ipcRenderer.invoke(IPC_CHANNELS.API_STUDIO_PICK_IMPORT_FOLDER),
     exportCollection: (input) =>
       ipcRenderer.invoke(IPC_CHANNELS.API_STUDIO_EXPORT_COLLECTION, input),
     oauth2: {

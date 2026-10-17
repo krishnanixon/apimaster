@@ -1,0 +1,22 @@
+meta {
+  name: Legacy Sync
+  type: http
+  seq: 2
+}
+
+put {
+  url: {{baseUrl}}/legacy/sync
+  body: formUrlEncoded
+  auth: ntlm
+}
+
+auth:ntlm {
+  username: svc
+  password: secret
+  domain: CORP
+}
+
+body:form-urlencoded {
+  full: true
+  ~since: 2026-01-01
+}

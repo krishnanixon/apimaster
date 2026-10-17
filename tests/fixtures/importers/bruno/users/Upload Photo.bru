@@ -1,0 +1,22 @@
+meta {
+  name: Upload Photo
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/pets/{{petId}}/photo
+  body: multipartForm
+  auth: apikey
+}
+
+auth:apikey {
+  key: X-API-Key
+  value: {{apiKey}}
+  placement: header
+}
+
+body:multipart-form {
+  caption: Sleeping on the couch
+  photo: @file(/Users/sam/Pictures/rex.jpg)
+}

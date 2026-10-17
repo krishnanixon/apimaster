@@ -1,0 +1,17 @@
+meta {
+  name: Delete Pet
+  type: http
+  seq: 1
+}
+
+delete {
+  url: {{baseUrl}}/pets/{{petId}}
+  body: none
+  auth: inherit
+}
+
+script:pre-request {
+  const id = bru.getVar("petId") || bru.getEnvVar("petId");
+  bru.setVar("deleting", id);
+  await bru.runRequest("auth/Login");
+}

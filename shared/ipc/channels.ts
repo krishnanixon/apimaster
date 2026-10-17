@@ -40,6 +40,7 @@ export const IPC_CHANNELS = {
   API_STUDIO_RUN_PRE_REQUEST: 'api-studio:run-pre-request',
   API_STUDIO_SAVE_RESPONSE: 'api-studio:save-response',
   API_STUDIO_PICK_IMPORT_COLLECTION: 'api-studio:pick-import-collection',
+  API_STUDIO_PICK_IMPORT_FOLDER: 'api-studio:pick-import-folder',
   API_STUDIO_EXPORT_COLLECTION: 'api-studio:export-collection',
   API_STUDIO_OAUTH2_AUTHORIZE: 'api-studio:oauth2-authorize',
   API_STUDIO_OAUTH2_TOKEN: 'api-studio:oauth2-token',
