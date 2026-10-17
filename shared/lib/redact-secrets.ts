@@ -8,7 +8,7 @@ const SENSITIVE_HEADER =
 /** Header names and field names that carry credentials. */
 const SENSITIVE_NAME = /(pass(word)?|secret|token|api[-_]?key|credential|session)/i
 
-const AUTH_SECRET_FIELDS = [
+export const AUTH_SECRET_FIELDS = [
   'bearerToken',
   'basicPassword',
   'apiKeyValue',

@@ -88,6 +88,20 @@ const api: ElectronAPI = {
     save: (payload) => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_SAVE, payload),
     saveSync: (payload) => ipcRenderer.sendSync(IPC_CHANNELS.WORKSPACE_SAVE_SYNC, payload)
   },
+  collectionFolders: {
+    pick: (input) => ipcRenderer.invoke(IPC_CHANNELS.COLLECTION_FOLDER_PICK, input),
+    read: (path) => ipcRenderer.invoke(IPC_CHANNELS.COLLECTION_FOLDER_READ, path),
+    write: (input) => ipcRenderer.invoke(IPC_CHANNELS.COLLECTION_FOLDER_WRITE, input),
+    watch: (path) => ipcRenderer.invoke(IPC_CHANNELS.COLLECTION_FOLDER_WATCH, path),
+    unwatch: (path) => ipcRenderer.invoke(IPC_CHANNELS.COLLECTION_FOLDER_UNWATCH, path),
+    forget: (path) => ipcRenderer.invoke(IPC_CHANNELS.COLLECTION_FOLDER_FORGET, path),
+    reveal: (path) => ipcRenderer.invoke(IPC_CHANNELS.COLLECTION_FOLDER_REVEAL, path),
+    onChanged: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, change: Parameters<typeof callback>[0]) => callback(change)
+      ipcRenderer.on(IPC_CHANNELS.COLLECTION_FOLDER_CHANGED, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.COLLECTION_FOLDER_CHANGED, handler)
+    }
+  },
   bugReports: {
     create: (input) => ipcRenderer.invoke(IPC_CHANNELS.BUG_REPORT_CREATE, input),
     list: () => ipcRenderer.invoke(IPC_CHANNELS.BUG_REPORT_LIST)

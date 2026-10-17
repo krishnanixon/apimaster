@@ -113,6 +113,8 @@ interface ApiStudioState {
   duplicateEnvironment: (id: string) => void
   updateEnvironmentVariables: (id: string, variables: KeyValuePair[]) => void
   setActiveEnvironment: (id: string | null) => void
+  /** Move an environment into a folder-linked collection's `environments/` (or back to global with `null`). */
+  setEnvironmentCollection: (id: string, collectionId: string | null) => void
 
   // Collections / folders
   createCollection: (name: string, description?: string) => ApiCollection
@@ -216,6 +218,14 @@ interface ApiStudioState {
   addCollection: (collection: ApiCollection) => void
   /** Replaces a collection by id (e.g. after a Code Scanner re-scan); unedited open tabs follow. */
   replaceCollection: (collection: ApiCollection) => void
+
+  // Collection folders (docs/COLLECTION_FILES.md)
+  /** Record that a collection is stored in `path`. */
+  linkCollectionFolder: (collectionId: string, path: string) => void
+  /** Back to workspace-only storage. Files on disk are left as they are. */
+  unlinkCollectionFolder: (collectionId: string) => void
+  /** Add or replace a collection read from its folder, with that folder's environments. */
+  applyCollectionFolder: (collection: ApiCollection, environments: ApiEnvironment[]) => void
   exportCollection: (collectionId: string) => string
   importCurlAsTab: (curl: string) => boolean
 }
@@ -400,6 +410,18 @@ export const useApiStudioStore = create<ApiStudioState>()(
 
       setActiveEnvironment: (id) => set({ activeEnvironmentId: id }),
 
+      setEnvironmentCollection: (id, collectionId) => {
+        set((state) => ({
+          environments: state.environments.map((e) => {
+            if (e.id !== id) return e
+            const next: ApiEnvironment = { ...e, updatedAt: new Date().toISOString() }
+            if (collectionId) next.collectionId = collectionId
+            else delete next.collectionId
+            return next
+          })
+        }))
+      },
+
       createCollection: (name, description = '') => {
         const now = new Date().toISOString()
         const collection: ApiCollection = {
@@ -421,7 +443,12 @@ export const useApiStudioStore = create<ApiStudioState>()(
       deleteCollection: (collectionId) => {
         set((state) => ({
           collections: state.collections.filter((c) => c.id !== collectionId),
-          tabs: state.tabs.filter((t) => t.collectionId !== collectionId)
+          tabs: state.tabs.filter((t) => t.collectionId !== collectionId),
+          // A folder collection's environments live in its folder; they go with it.
+          environments: state.environments.filter((e) => e.collectionId !== collectionId),
+          activeEnvironmentId: state.environments.some((e) => e.id === state.activeEnvironmentId && e.collectionId === collectionId)
+            ? null
+            : state.activeEnvironmentId
         }))
       },
 
@@ -1102,12 +1129,60 @@ export const useApiStudioStore = create<ApiStudioState>()(
       replaceCollection: (collection) => {
         const byId = new Map(collection.requests.map((r) => [r.id, r]))
         set((state) => ({
-          collections: state.collections.map((c) => (c.id === collection.id ? collection : c)),
+          // A replacement built elsewhere (e.g. a re-scan) keeps the collection's folder link.
+          collections: state.collections.map((c) =>
+            c.id === collection.id ? (collection.folder || !c.folder ? collection : { ...collection, folder: c.folder }) : c
+          ),
           // Tabs with unsaved edits keep them; clean tabs show the updated request.
           tabs: state.tabs.map((t) =>
             t.collectionId === collection.id && !t.dirty && byId.has(t.request.id) ? { ...t, request: byId.get(t.request.id)! } : t
           )
         }))
+      },
+
+      linkCollectionFolder: (collectionId, path) => {
+        set((state) => ({
+          collections: state.collections.map((c) => (c.id === collectionId ? { ...c, folder: { path } } : c))
+        }))
+      },
+
+      unlinkCollectionFolder: (collectionId) => {
+        set((state) => ({
+          collections: state.collections.map((c) => {
+            if (c.id !== collectionId) return c
+            const next = { ...c }
+            delete next.folder
+            return next
+          }),
+          environments: state.environments.map((e) => {
+            if (e.collectionId !== collectionId) return e
+            const next = { ...e }
+            delete next.collectionId
+            return next
+          })
+        }))
+      },
+
+      applyCollectionFolder: (collection, environments) => {
+        const byId = new Map(collection.requests.map((r) => [r.id, r]))
+        set((state) => {
+          const exists = state.collections.some((c) => c.id === collection.id)
+          const keep = state.environments.filter((e) => e.collectionId !== collection.id)
+          const nextEnvironments = [...keep, ...environments]
+          return {
+            collections: exists
+              ? state.collections.map((c) => (c.id === collection.id ? collection : c))
+              : [...state.collections, collection],
+            environments: nextEnvironments,
+            activeEnvironmentId: nextEnvironments.some((e) => e.id === state.activeEnvironmentId) ? state.activeEnvironmentId : null,
+            // Tabs with unsaved edits keep them; clean tabs show what is on disk now.
+            tabs: state.tabs.map((t) =>
+              t.collectionId === collection.id && !t.dirty && byId.has(t.request.id) && byId.get(t.request.id) !== t.request
+                ? { ...t, request: byId.get(t.request.id)! }
+                : t
+            )
+          }
+        })
       },
 
       exportCollection: (collectionId) => {

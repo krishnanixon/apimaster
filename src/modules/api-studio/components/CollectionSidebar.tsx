@@ -16,7 +16,13 @@ import {
   Pencil,
   Copy,
   Play,
-  Server
+  Server,
+  FolderOpen,
+  FolderGit2,
+  FolderSync,
+  FolderX,
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -48,6 +54,16 @@ import { ImportCollectionDialog } from './ImportCollectionDialog'
 import { CollectionRunnerDialog } from './CollectionRunnerDialog'
 import { CollectionExportDialog } from './CollectionExportDialog'
 import { ParentSettingsDialog, type ParentSettingsTarget } from './ParentSettingsDialog'
+import {
+  forgetCollectionFolder,
+  openFolderAsCollection,
+  reloadCollectionFolder,
+  revealCollectionFolder,
+  saveCollectionToFolder,
+  unlinkCollectionFolder,
+  useCollectionFolderStatus,
+  type CollectionFolderStatus
+} from '../services/collectionFolderSync'
 import { METHOD_COLORS, requestProtocolLabel } from '../types/api.types'
 import type { ApiCollection, ApiFolder, ApiRequest } from '../types/api.types'
 
@@ -94,6 +110,17 @@ function matchesSearch(collection: ApiCollection, query: string): boolean {
   )
 }
 
+function folderProblem(status: CollectionFolderStatus | undefined): string | null {
+  if (!status) return null
+  if (status.fatal) return status.fatal
+  if (status.conflict) return 'Changed on disk while you had unsaved changes — choose which version to keep.'
+  if (status.saveError) return `Not saved to the folder: ${status.saveError}`
+  if (status.errors.length) {
+    return `Some files could not be read and were skipped:\n${status.errors.map((e) => `${e.path}: ${e.message}`).join('\n')}`
+  }
+  return null
+}
+
 function targetKey(t: DropTarget): string {
   return `${t.kind}:${t.id}`
 }
@@ -123,6 +150,7 @@ export function CollectionSidebar() {
   const moveRequest = useApiStudioStore((s) => s.moveRequest)
   const activeTabId = useApiStudioStore((s) => s.activeTabId)
   const tabs = useApiStudioStore((s) => s.tabs)
+  const folderStatus = useCollectionFolderStatus((s) => s.byId)
 
   const [expandedCollections, setExpandedCollections] = useState<Set<string>>(() => new Set())
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set())
@@ -220,7 +248,10 @@ export function CollectionSidebar() {
 
   function handleDeleteConfirm() {
     if (!deleteTarget) return
-    if (deleteTarget.type === 'collection') deleteCollection(deleteTarget.id)
+    if (deleteTarget.type === 'collection') {
+      forgetCollectionFolder(deleteTarget.id)
+      deleteCollection(deleteTarget.id)
+    }
     if (deleteTarget.type === 'folder') deleteFolder(deleteTarget.collectionId, deleteTarget.id)
     if (deleteTarget.type === 'request') deleteRequest(deleteTarget.collectionId, deleteTarget.id)
     setDeleteTarget(null)
@@ -257,6 +288,23 @@ export function CollectionSidebar() {
       if (res.error === 'Import cancelled') return
     }
     setImportOpen(true)
+  }
+
+  async function handleOpenFolder() {
+    const collectionId = await openFolderAsCollection()
+    if (collectionId) expandCollection(collectionId)
+  }
+
+  function folderMenuItems(collection: ApiCollection): { icon: ReactNode; label: string; onSelect: () => void }[] {
+    if (!collection.folder?.path) {
+      return [{ icon: <FolderGit2 className="h-3 w-3" />, label: 'Save to folder…', onSelect: () => void saveCollectionToFolder(collection.id) }]
+    }
+    return [
+      { icon: <FolderOpen className="h-3 w-3" />, label: 'Show folder', onSelect: () => revealCollectionFolder(collection.id) },
+      { icon: <RefreshCw className="h-3 w-3" />, label: 'Reload from folder', onSelect: () => void reloadCollectionFolder(collection.id) },
+      { icon: <FolderSync className="h-3 w-3" />, label: 'Move to another folder…', onSelect: () => void saveCollectionToFolder(collection.id) },
+      { icon: <FolderX className="h-3 w-3" />, label: 'Stop syncing to folder', onSelect: () => unlinkCollectionFolder(collection.id) }
+    ]
   }
 
   function handleImported(collectionId: string) {
@@ -393,6 +441,9 @@ export function CollectionSidebar() {
         <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="New collection" onClick={() => setPrompt({ type: 'new-collection' })}>
           <Plus className="h-3.5 w-3.5" />
         </Button>
+        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Open folder as collection" onClick={() => void handleOpenFolder()}>
+          <FolderOpen className="h-3.5 w-3.5" />
+        </Button>
         <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Import collection or cURL" onClick={() => void handleImportClick()}>
           <Upload className="h-3.5 w-3.5" />
         </Button>
@@ -414,9 +465,14 @@ export function CollectionSidebar() {
             title="No collections yet"
             description="Create a collection to start organizing your API requests."
             action={
-              <Button size="sm" onClick={() => setPrompt({ type: 'new-collection' })}>
-                <Plus className="h-3.5 w-3.5" /> New Collection
-              </Button>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button size="sm" onClick={() => setPrompt({ type: 'new-collection' })}>
+                  <Plus className="h-3.5 w-3.5" /> New Collection
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => void handleOpenFolder()}>
+                  <FolderOpen className="h-3.5 w-3.5" /> Open Folder
+                </Button>
+              </div>
             }
           />
         ) : (
@@ -425,6 +481,7 @@ export function CollectionSidebar() {
               const expanded = expandedCollections.has(collection.id)
               const rootRequests = collection.requests.filter((r) => !r.folderId)
               const collectionTarget: DropTarget = { kind: 'collection', id: collection.id }
+              const problem = collection.folder?.path ? folderProblem(folderStatus[collection.id]) : null
               return (
                 <div key={collection.id}>
                   <TreeRow
@@ -445,6 +502,7 @@ export function CollectionSidebar() {
                           { icon: <Shield className="h-3 w-3" />, label: 'Authorization', onSelect: () => setSettingsTarget({ kind: 'collection', collectionId: collection.id }) },
                           { icon: <Pencil className="h-3 w-3" />, label: 'Rename', onSelect: () => setPrompt({ type: 'rename-collection', collectionId: collection.id, name: collection.name }) },
                           { icon: <Download className="h-3 w-3" />, label: 'Export…', onSelect: () => setExportCollectionTarget(collection) },
+                          ...folderMenuItems(collection),
                           {
                             icon: <Server className="h-3 w-3" />,
                             label: 'Create Mock Server',
@@ -478,6 +536,11 @@ export function CollectionSidebar() {
                         <ContextMenuItem onSelect={() => setExportCollectionTarget(collection)}>
                           <Download className="h-3.5 w-3.5" /> Export…
                         </ContextMenuItem>
+                        {folderMenuItems(collection).map((item) => (
+                          <ContextMenuItem key={item.label} onSelect={item.onSelect}>
+                            {item.icon} {item.label}
+                          </ContextMenuItem>
+                        ))}
                         <ContextMenuItem onSelect={() => void handleCreateMockServer(collection)}>
                           <Server className="h-3.5 w-3.5" /> Create Mock Server
                         </ContextMenuItem>
@@ -492,7 +555,7 @@ export function CollectionSidebar() {
                       type="button"
                       onClick={() => toggleCollection(collection.id)}
                       className="flex min-w-0 flex-1 items-center gap-1 text-left"
-                      title={collection.name}
+                      title={collection.folder?.path ? `${collection.name}\n${collection.folder.path}` : collection.name}
                     >
                       {expanded ? (
                         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -501,6 +564,14 @@ export function CollectionSidebar() {
                       )}
                       <Library className="h-3.5 w-3.5 shrink-0 text-primary" />
                       <span className="min-w-0 truncate text-xs font-medium">{collection.name}</span>
+                      {collection.folder?.path && (
+                        <FolderGit2 className="h-3 w-3 shrink-0 text-muted-foreground" aria-label={`Saved in ${collection.folder.path}`} />
+                      )}
+                      {problem && (
+                        <span title={problem} className="shrink-0">
+                          <AlertTriangle className="h-3 w-3 text-amber-500" aria-label={problem} />
+                        </span>
+                      )}
                       {collectionHasOwnSettings(collection) && (
                         <Shield className="h-3 w-3 shrink-0 text-primary" aria-label="Has collection authorization" />
                       )}
@@ -622,7 +693,9 @@ export function CollectionSidebar() {
         description={
           deleteTarget?.type === 'folder'
             ? 'This deletes the folder and all nested subfolders. Requests inside will move to the collection root.'
-            : 'This cannot be undone.'
+            : deleteTarget?.type === 'collection' && collections.find((c) => c.id === deleteTarget.id)?.folder?.path
+              ? 'This removes the collection from Shurikly. Its folder and files stay on disk; open the folder again to bring it back.'
+              : 'This cannot be undone.'
         }
         onConfirm={handleDeleteConfirm}
       />

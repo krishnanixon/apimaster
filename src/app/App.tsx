@@ -17,6 +17,7 @@ import {
 import { TermsPage } from '@/features/legal/pages/TermsPage'
 import type { ApiStudioLaunchState } from '@/modules/api-studio/services/launchIntent'
 import { startMcpToolBridge } from '@/modules/api-studio/services/mcp/bridge'
+import { startCollectionFolderSync } from '@/modules/api-studio/services/collectionFolderSync'
 import { GlobalSettingsPage } from '@/features/settings/pages/GlobalSettingsPage'
 import { DiagnosticsPage } from '@/features/diagnostics/pages/DiagnosticsPage'
 
@@ -47,6 +48,7 @@ const ApiStudioPage = lazy(() =>
 export function App() {
   useMacWindowChrome()
   useEffect(() => startMcpToolBridge(), [])
+  useEffect(() => startCollectionFolderSync(), [])
   const { loadSettings, loadApiKeyStatus, settings } = useSettingsStore()
   const applyAppearance = useUIStore((s) => s.applyAppearance)
   const navigate = useNavigate()

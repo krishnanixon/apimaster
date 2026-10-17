@@ -330,6 +330,7 @@ export function RequestBuilder({ tabId }: { tabId: string }) {
               pathParams={request.pathParams ?? []}
               onChange={(queryParams) => updateDraft(tabId, { queryParams })}
               onPathParamsChange={(pathParams) => updateDraft(tabId, { pathParams })}
+              secretToggle={Boolean(collection?.folder?.path)}
             />
           </TabsContent>
           <TabsContent value="headers" className="absolute inset-0 mt-0 overflow-y-auto data-[state=inactive]:hidden">
@@ -337,6 +338,7 @@ export function RequestBuilder({ tabId }: { tabId: string }) {
               headers={request.headers}
               onChange={(headers) => updateDraft(tabId, { headers })}
               inheritedHeaders={inheritedHeaders}
+              secretToggle={Boolean(collection?.folder?.path)}
             />
           </TabsContent>
           <TabsContent

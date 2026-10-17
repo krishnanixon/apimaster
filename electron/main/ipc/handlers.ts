@@ -23,6 +23,7 @@ import { registerCodeScannerHandlers } from './code-scanner.handlers'
 import { registerUpdaterHandlers } from './updater.handlers'
 import { updaterService } from '../infra/updater.service'
 import { registerNetworkHandlers } from './network.handlers'
+import { registerCollectionFolderHandlers } from './collection-folder.handlers'
 
 function success<T>(data?: T): IpcResult<T> {
   return { success: true, data }
@@ -317,6 +318,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
   registerMockServerHandlers()
   registerAiEngineerHandlers()
   registerCodeScannerHandlers(getMainWindow)
+  registerCollectionFolderHandlers(getMainWindow)
   registerMcpHandlers(getMainWindow)
   registerUpdaterHandlers()
 }
