@@ -7,7 +7,7 @@ Product ......... Shurikly (formerly APIMaster / API Studio)
 Owner ........... Wansify Ventures — MIT License
 Version ......... 1.0.0 (public launch 25 October 2026)
 App ID .......... com.shurikly.app
-Repository ...... https://github.com/shurikly/shurikly
+Repository ...... https://github.com/krishnanixon/apimaster
 Last updated .... 17 October 2026 (branch api-studio, after commit 6f56770)
 
 This file is the in-depth reference for engineers working on the codebase: what
@@ -239,7 +239,7 @@ Main screens (renderer routes in src/app/App.tsx):
 Requirements: Node.js 20+ (.nvmrc pins the CI version), npm 10+, macOS,
 Windows or Linux. No environment variables or accounts are needed.
 
-  git clone https://github.com/shurikly/shurikly.git
+  git clone https://github.com/krishnanixon/apimaster.git
   cd shurikly
   npm install
   npm run dev
@@ -928,7 +928,7 @@ updater compares them), update CHANGELOG.md, tag, wait for 3 jobs, publish.
 Packaging notes (package.json "build"): appId com.shurikly.app; extra
 resources shurikly.png, app-icon.png, mcp-stdio.js; QuickJS packages
 asarUnpack'ed; mac targets dmg + zip; win nsis (custom dir, shortcuts,
-license); linux AppImage; publish github shurikly/shurikly draft.
+license); linux AppImage; publish github krishnanixon/apimaster draft.
 
 
 ================================================================================

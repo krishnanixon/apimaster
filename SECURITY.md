@@ -17,7 +17,7 @@ Security fixes go into the latest release. Please upgrade before reporting.
 **Do not open a public issue for security problems.**
 
 Report privately through GitHub:
-[Security → Report a vulnerability](https://github.com/shurikly/shurikly/security/advisories/new).
+[Security → Report a vulnerability](https://github.com/krishnanixon/apimaster/security/advisories/new).
 
 Include:
 

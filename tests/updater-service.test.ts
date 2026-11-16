@@ -111,7 +111,7 @@ describe('UpdaterService', () => {
     const status = await service.check()
     expect(updater.autoDownload).toBe(false)
     expect(status.phase).toBe('available')
-    expect(status.releaseUrl).toBe('https://github.com/shurikly/shurikly/releases/tag/v1.2.0')
+    expect(status.releaseUrl).toBe('https://github.com/krishnanixon/apimaster/releases/tag/v1.2.0')
     expect(() => service.install()).toThrow()
   })
 
@@ -123,12 +123,25 @@ describe('UpdaterService', () => {
   })
 
   it('keeps the first line of a failed check', async () => {
-    checkForUpdates.mockRejectedValueOnce(new Error('HttpError: 404\n<html>long body</html>'))
+    checkForUpdates.mockRejectedValueOnce(new Error('HttpError: 500\n<html>long body</html>'))
     const service = new UpdaterService('install')
     await service.start(fakeWindow)
     const status = await service.check()
     expect(status.phase).toBe('error')
-    expect(status.error).toBe('HttpError: 404')
+    expect(status.error).toBe('HttpError: 500')
+  })
+
+  it('treats a 404 release feed as no published releases', async () => {
+    checkForUpdates.mockRejectedValueOnce(
+      Object.assign(new Error('HttpError: 404\n"method: GET url: https://github.com/x/y/releases.atom'), {
+        statusCode: 404
+      })
+    )
+    const service = new UpdaterService('notify')
+    await service.start(fakeWindow)
+    const status = await service.check()
+    expect(status.phase).toBe('error')
+    expect(status.error).toBe('No published releases found to check against.')
   })
 
   it('never checks in unsupported builds', async () => {

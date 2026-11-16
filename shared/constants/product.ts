@@ -27,5 +27,5 @@ export const USER_DATA_DIR = 'shurikly'
 export const APP_ID = 'com.shurikly.app'
 
 /** Public source repository */
-export const REPOSITORY_URL = 'https://github.com/shurikly/shurikly'
+export const REPOSITORY_URL = 'https://github.com/krishnanixon/apimaster'
 export const ISSUES_URL = `${REPOSITORY_URL}/issues/new/choose`

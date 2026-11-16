@@ -13,6 +13,7 @@ import { HTTP_METHODS, METHOD_COLORS } from '../../types/api.types'
 import type { HttpMethod } from '../../types/api.types'
 import { useApiStudioStore } from '../../stores/apiStudioStore'
 import { enabledVariableMap } from '../../services/environment'
+import { looksLikeCurl } from '../../services/curlParser'
 import { ExpandableField } from '../ExpandableField'
 
 interface UrlBarProps {
@@ -46,7 +47,8 @@ export function UrlBar({
   onConnect,
   onDisconnect
 }: UrlBarProps) {
-  const importCurlAsTab = useApiStudioStore((s) => s.importCurlAsTab)
+  const activeTabId = useApiStudioStore((s) => s.activeTabId)
+  const applyCurlToTab = useApiStudioStore((s) => s.applyCurlToTab)
   const environments = useApiStudioStore((s) => s.environments)
   const activeEnvironmentId = useApiStudioStore((s) => s.activeEnvironmentId)
 
@@ -64,9 +66,10 @@ export function UrlBar({
 
   function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     const text = e.clipboardData.getData('text')
-    if (!/^\s*curl\s/i.test(text)) return
+    if (!looksLikeCurl(text) || !activeTabId) return
+    // Like Postman: a pasted cURL command fills in this request instead of landing in the URL.
     e.preventDefault()
-    importCurlAsTab(text)
+    applyCurlToTab(activeTabId, text)
   }
 
   return (

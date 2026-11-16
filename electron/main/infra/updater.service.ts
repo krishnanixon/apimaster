@@ -22,6 +22,14 @@ function shortError(error: unknown): string {
   return firstLine.length > 200 ? `${firstLine.slice(0, 200)}…` : firstLine || 'Update check failed'
 }
 
+/** GitHub answers 404 when the release feed isn't reachable (repository missing, private, or no releases yet). */
+function isFeedNotFound(error: unknown): boolean {
+  if (error && typeof error === 'object' && (error as { statusCode?: unknown }).statusCode === 404) return true
+  return /^HttpError: 404\b/.test(shortError(error))
+}
+
+const FEED_NOT_FOUND_MESSAGE = 'No published releases found to check against.'
+
 /**
  * Checks GitHub releases for a newer Shurikly. Windows and Linux AppImage builds download
  * in the background and offer a restart; macOS (ad-hoc signed) only shows a download link.
@@ -108,6 +116,11 @@ export class UpdaterService {
       if (!result && this.status.phase === 'checking') this.update({ phase: 'up-to-date' })
       this.update({ checkedAt: new Date().toISOString() })
     } catch (error) {
+      if (isFeedNotFound(error)) {
+        logger.info(`Update check skipped: ${FEED_NOT_FOUND_MESSAGE}`, LOG_CONTEXT)
+        this.update({ phase: 'error', error: FEED_NOT_FOUND_MESSAGE, checkedAt: new Date().toISOString() })
+        return
+      }
       const message = shortError(error)
       logger.warn(`Update check failed: ${message}`, LOG_CONTEXT)
       this.update({ phase: 'error', error: message, checkedAt: new Date().toISOString() })
@@ -121,7 +134,9 @@ export class UpdaterService {
     autoUpdater.logger = {
       info: (message?: unknown) => logger.debug(String(message), LOG_CONTEXT),
       warn: (message?: unknown) => logger.warn(String(message), LOG_CONTEXT),
-      error: (message?: unknown) => logger.error(String(message), LOG_CONTEXT),
+      // electron-updater logs every failure with the full HTTP response (headers, cookies);
+      // runCheck and the 'error' listener already log a one-line summary.
+      error: (message?: unknown) => logger.debug(shortError(message), LOG_CONTEXT),
       debug: (message: string) => logger.debug(message, LOG_CONTEXT)
     }
     autoUpdater.autoDownload = this.mode === 'install'
@@ -150,7 +165,11 @@ export class UpdaterService {
     })
     autoUpdater.on('error', (error: Error) => {
       // A failed background download surfaces here, after checkForUpdates resolved.
-      this.update({ phase: 'error', error: shortError(error) })
+      // A failed check also lands here; runCheck reports that one.
+      if (this.status.phase === 'checking') return
+      const message = shortError(error)
+      logger.warn(`Update download failed: ${message}`, LOG_CONTEXT)
+      this.update({ phase: 'error', error: message })
     })
 
     this.updater = autoUpdater

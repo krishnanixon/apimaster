@@ -58,10 +58,50 @@ export function requireSpecifier(expr: ts.Expression): string | null {
     ts.isCallExpression(e) &&
     ts.isIdentifier(e.expression) &&
     e.expression.text === 'require' &&
-    e.arguments.length === 1 &&
-    ts.isStringLiteralLike(e.arguments[0])
+    e.arguments.length === 1
   ) {
-    return e.arguments[0].text
+    return specifierText(e.arguments[0])
+  }
+  return null
+}
+
+const isDirname = (e: ts.Expression): boolean => ts.isIdentifier(skipOuter(e)) && (skipOuter(e) as ts.Identifier).text === '__dirname'
+
+/** `./a` + `b/c.js` → `./a/b/c.js` (relative to the requiring file, which is what `__dirname` means). */
+function joinRelative(parts: string[]): string {
+  const joined = parts
+    .join('/')
+    .replace(/\/+/g, '/')
+    .replace(/(^|\/)\.\//g, '$1')
+  return joined.startsWith('.') ? joined : `./${joined}`
+}
+
+/**
+ * A module path written as `'x'`, or built from the file's own folder: `path.join(__dirname, './x')`,
+ * `path.resolve(__dirname, 'x')`, `` `${__dirname}/x` ``, `__dirname + '/x'`.
+ */
+function specifierText(arg: ts.Expression): string | null {
+  const e = skipOuter(arg)
+  if (ts.isStringLiteralLike(e)) return e.text
+  if (ts.isTemplateExpression(e) && e.head.text === '' && e.templateSpans.length === 1) {
+    const span = e.templateSpans[0]
+    if (isDirname(span.expression) && span.literal.text) return joinRelative([span.literal.text])
+    return null
+  }
+  if (ts.isBinaryExpression(e) && e.operatorToken.kind === ts.SyntaxKind.PlusToken && isDirname(e.left)) {
+    const right = skipOuter(e.right)
+    return ts.isStringLiteralLike(right) ? joinRelative([right.text]) : null
+  }
+  if (ts.isCallExpression(e) && e.arguments.length >= 2 && isDirname(e.arguments[0])) {
+    const callee = skipOuter(e.expression)
+    const name = ts.isPropertyAccessExpression(callee) ? callee.name.text : ts.isIdentifier(callee) ? callee.text : ''
+    if (name !== 'join' && name !== 'resolve') return null
+    const rest = e.arguments.slice(1).map((a) => skipOuter(a))
+    if (!rest.every(ts.isStringLiteralLike)) return null
+    const parts = (rest as ts.StringLiteralLike[]).map((r) => r.text)
+    // `path.resolve(__dirname, '/abs')` restarts at the root; we can't place that.
+    if (name === 'resolve' && parts.some((p) => p.startsWith('/'))) return null
+    return joinRelative(parts)
   }
   return null
 }

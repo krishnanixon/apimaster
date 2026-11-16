@@ -11,7 +11,7 @@ import { UrlBar } from '../components/request/UrlBar'
 import { RequestBuilder } from '../components/RequestBuilder'
 import { ResponseViewer } from '../components/ResponseViewer'
 import { SaveRequestDialog } from '../components/SaveRequestDialog'
-import { CodeSnippetDialog } from '../components/CodeSnippetDialog'
+import { RequestExportDialog } from '../components/RequestExportDialog'
 import { ImportCollectionDialog } from '../components/ImportCollectionDialog'
 import { StartScreen } from '../components/StartScreen'
 import { readLaunchIntent, SAMPLE_REQUEST_URL } from '../services/launchIntent'
@@ -219,7 +219,7 @@ export function ApiStudioPage() {
             requestName={activeTab.request.name}
             onConfirm={(collectionId, folderId, name) => saveTabAs(activeTabId!, collectionId, folderId, name)}
           />
-          <CodeSnippetDialog
+          <RequestExportDialog
             open={codeDialogOpen}
             onOpenChange={setCodeDialogOpen}
             request={activeTab.request}

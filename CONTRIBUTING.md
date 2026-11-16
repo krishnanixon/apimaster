@@ -29,7 +29,7 @@ Requirements:
 - macOS, Windows, or Linux
 
 ```bash
-git clone https://github.com/shurikly/shurikly.git
+git clone https://github.com/krishnanixon/apimaster.git
 cd shurikly
 npm install
 npm run dev

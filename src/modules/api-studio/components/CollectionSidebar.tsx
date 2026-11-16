@@ -53,6 +53,8 @@ import { ConfirmDialog } from './ConfirmDialog'
 import { ImportCollectionDialog } from './ImportCollectionDialog'
 import { CollectionRunnerDialog } from './CollectionRunnerDialog'
 import { CollectionExportDialog } from './CollectionExportDialog'
+import { ImportRequestDialog } from './ImportRequestDialog'
+import { RequestExportDialog } from './RequestExportDialog'
 import { ParentSettingsDialog, type ParentSettingsTarget } from './ParentSettingsDialog'
 import {
   forgetCollectionFolder,
@@ -159,6 +161,8 @@ export function CollectionSidebar() {
   const [importOpen, setImportOpen] = useState(false)
   const [runnerTarget, setRunnerTarget] = useState<RunnerAction | null>(null)
   const [exportCollectionTarget, setExportCollectionTarget] = useState<ApiCollection | null>(null)
+  const [exportRequestTarget, setExportRequestTarget] = useState<{ request: ApiRequest; collection: ApiCollection } | null>(null)
+  const [importRequestCollectionId, setImportRequestCollectionId] = useState<string | null>(null)
   const [settingsTarget, setSettingsTarget] = useState<ParentSettingsTarget | null>(null)
   const [dragOverKey, setDragOverKey] = useState<string | null>(null)
 
@@ -499,6 +503,7 @@ export function CollectionSidebar() {
                           { icon: <Plus className="h-3 w-3" />, label: 'New Request', onSelect: () => createRequest(collection.id) },
                           { icon: <Braces className="h-3 w-3" />, label: 'New GraphQL request', onSelect: () => createRequest(collection.id, null, 'graphql') },
                           { icon: <FolderPlus className="h-3 w-3" />, label: 'New Folder', onSelect: () => setPrompt({ type: 'new-folder', collectionId: collection.id }) },
+                          { icon: <Upload className="h-3 w-3" />, label: 'Import request…', onSelect: () => setImportRequestCollectionId(collection.id) },
                           { icon: <Shield className="h-3 w-3" />, label: 'Authorization', onSelect: () => setSettingsTarget({ kind: 'collection', collectionId: collection.id }) },
                           { icon: <Pencil className="h-3 w-3" />, label: 'Rename', onSelect: () => setPrompt({ type: 'rename-collection', collectionId: collection.id, name: collection.name }) },
                           { icon: <Download className="h-3 w-3" />, label: 'Export…', onSelect: () => setExportCollectionTarget(collection) },
@@ -525,6 +530,9 @@ export function CollectionSidebar() {
                         </ContextMenuItem>
                         <ContextMenuItem onSelect={() => setPrompt({ type: 'new-folder', collectionId: collection.id })}>
                           <FolderPlus className="h-3.5 w-3.5" /> New Folder
+                        </ContextMenuItem>
+                        <ContextMenuItem onSelect={() => setImportRequestCollectionId(collection.id)}>
+                          <Upload className="h-3.5 w-3.5" /> Import request…
                         </ContextMenuItem>
                         <ContextMenuItem onSelect={() => setSettingsTarget({ kind: 'collection', collectionId: collection.id })}>
                           <Shield className="h-3.5 w-3.5" /> Authorization
@@ -604,6 +612,7 @@ export function CollectionSidebar() {
                           onCreateRequest={createRequest}
                           onDuplicateRequest={duplicateRequest}
                           onCreateMock={(request) => void handleCreateMockFromRequest(collection.id, request)}
+                          onExportRequest={(request) => setExportRequestTarget({ request, collection })}
                         />
                       ))}
 
@@ -651,6 +660,7 @@ export function CollectionSidebar() {
                               })
                             }
                             onCreateMock={() => void handleCreateMockFromRequest(collection.id, request)}
+                            onExport={() => setExportRequestTarget({ request, collection })}
                           />
                         )
                       })}
@@ -706,6 +716,17 @@ export function CollectionSidebar() {
         onOpenChange={(open) => !open && setExportCollectionTarget(null)}
         collection={exportCollectionTarget}
       />
+      <RequestExportDialog
+        open={exportRequestTarget !== null}
+        onOpenChange={(open) => !open && setExportRequestTarget(null)}
+        request={exportRequestTarget?.request ?? null}
+        collection={exportRequestTarget?.collection ?? null}
+      />
+      <ImportRequestDialog
+        open={importRequestCollectionId !== null}
+        onOpenChange={(open) => !open && setImportRequestCollectionId(null)}
+        collectionId={importRequestCollectionId}
+      />
       <ParentSettingsDialog
         target={settingsTarget}
         onOpenChange={(open) => !open && setSettingsTarget(null)}
@@ -744,7 +765,8 @@ function FolderNode({
   onSettings,
   onCreateRequest,
   onDuplicateRequest,
-  onCreateMock
+  onCreateMock,
+  onExportRequest
 }: {
   collection: ApiCollection
   folder: ApiFolder
@@ -766,6 +788,7 @@ function FolderNode({
   onCreateRequest: (collectionId: string, folderId?: string | null, requestType?: ApiRequest['requestType']) => void
   onDuplicateRequest: (collectionId: string, requestId: string) => void
   onCreateMock: (request: ApiRequest) => void
+  onExportRequest: (request: ApiRequest) => void
 }) {
   const folderExpanded = expandedFolders.has(folder.id)
   const childFolders = getChildFolders(collection.folders, folder.id)
@@ -966,6 +989,7 @@ function FolderNode({
               onCreateRequest={onCreateRequest}
               onDuplicateRequest={onDuplicateRequest}
               onCreateMock={onCreateMock}
+              onExportRequest={onExportRequest}
             />
           ))}
           {folderRequests.map((request) => {
@@ -1012,6 +1036,7 @@ function FolderNode({
                   })
                 }
                 onCreateMock={() => onCreateMock(request)}
+                onExport={() => onExportRequest(request)}
               />
             )
           })}
@@ -1093,7 +1118,8 @@ function RequestRow({
   onRename,
   onDuplicate,
   onDelete,
-  onCreateMock
+  onCreateMock,
+  onExport
 }: {
   depth: number
   request: ApiRequest
@@ -1108,6 +1134,7 @@ function RequestRow({
   onDuplicate: () => void
   onDelete: () => void
   onCreateMock?: () => void
+  onExport: () => void
 }) {
   const method = requestProtocolLabel(request)
   return (
@@ -1125,6 +1152,7 @@ function RequestRow({
           items={[
             { icon: <Pencil className="h-3 w-3" />, label: 'Rename', onSelect: onRename },
             { icon: <Copy className="h-3 w-3" />, label: 'Duplicate', onSelect: onDuplicate },
+            { icon: <Download className="h-3 w-3" />, label: 'Export…', onSelect: onExport },
             ...(onCreateMock
               ? [{ icon: <Server className="h-3 w-3" />, label: 'Create Mock', onSelect: onCreateMock }]
               : []),
@@ -1146,6 +1174,9 @@ function RequestRow({
           </ContextMenuItem>
           <ContextMenuItem onSelect={onDuplicate}>
             <Copy className="h-3.5 w-3.5" /> Duplicate
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={onExport}>
+            <Download className="h-3.5 w-3.5" /> Export…
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem className="text-destructive focus:text-destructive" onSelect={onDelete}>

@@ -72,8 +72,8 @@ describe('update mode', () => {
   })
 
   it('links to the GitHub release for a version', () => {
-    expect(releasePageUrl('1.2.3')).toBe('https://github.com/shurikly/shurikly/releases/tag/v1.2.3')
-    expect(releasePageUrl('v1.2.3')).toBe('https://github.com/shurikly/shurikly/releases/tag/v1.2.3')
+    expect(releasePageUrl('1.2.3')).toBe('https://github.com/krishnanixon/apimaster/releases/tag/v1.2.3')
+    expect(releasePageUrl('v1.2.3')).toBe('https://github.com/krishnanixon/apimaster/releases/tag/v1.2.3')
   })
 
   it('checks every 6 hours', () => {

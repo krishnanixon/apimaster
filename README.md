@@ -12,16 +12,16 @@
 <p align="center"><sub>A product of <strong>Wansify Ventures</strong></sub></p>
 
 <p align="center">
-  <a href="https://github.com/shurikly/shurikly/releases/latest">Download</a> ·
+  <a href="https://github.com/krishnanixon/apimaster/releases/latest">Download</a> ·
   <a href="#build-from-source">Build from source</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
-  <a href="https://github.com/shurikly/shurikly/issues">Issues</a>
+  <a href="https://github.com/krishnanixon/apimaster/issues">Issues</a>
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
-  <a href="https://github.com/shurikly/shurikly/actions/workflows/quality.yml"><img alt="CI" src="https://github.com/shurikly/shurikly/actions/workflows/quality.yml/badge.svg" /></a>
-  <a href="https://github.com/shurikly/shurikly/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/shurikly/shurikly" /></a>
+  <a href="https://github.com/krishnanixon/apimaster/actions/workflows/quality.yml"><img alt="CI" src="https://github.com/krishnanixon/apimaster/actions/workflows/quality.yml/badge.svg" /></a>
+  <a href="https://github.com/krishnanixon/apimaster/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/krishnanixon/apimaster" /></a>
 </p>
 
 ## Screenshots
@@ -38,7 +38,7 @@
 ## Install
 
 Download the installer for your platform from the
-[latest release](https://github.com/shurikly/shurikly/releases/latest):
+[latest release](https://github.com/krishnanixon/apimaster/releases/latest):
 
 | Platform | File |
 |---|---|
@@ -116,7 +116,7 @@ data is sent to that provider only when you trigger an AI action.
 Requires Node.js 20+ and npm.
 
 ```bash
-git clone https://github.com/shurikly/shurikly.git
+git clone https://github.com/krishnanixon/apimaster.git
 cd shurikly
 npm install
 npm run dev

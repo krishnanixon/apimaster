@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, CheckCircle2, FileJson, FolderOpen, Info, Terminal, Upload } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, FileJson, FolderOpen, Info, Terminal, Upload, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
@@ -10,6 +10,7 @@ import { cn } from '@/shared/lib/utils'
 import { IMPORT_FORMAT_LABELS, detectImportFormat, type BrunoSourceFile, type ImportResult } from '@shared/lib/importers'
 import { useApiStudioStore } from '../stores/apiStudioStore'
 import { importBrunoFolder, importFromText } from '../services/collectionImport'
+import { looksLikeCurl, validateCurl } from '../services/curlParser'
 
 type ImportTab = 'file' | 'collection' | 'curl'
 
@@ -25,9 +26,6 @@ const TAB_TRIGGER =
 
 const MAX_DROPPED_FILES = 5_000
 
-function looksLikeCurl(text: string): boolean {
-  return /^\s*curl\s/i.test(text)
-}
 
 function errorMessage(e: unknown, fallback: string): string {
   return e instanceof Error && e.message ? e.message : fallback
@@ -391,6 +389,7 @@ export function ImportCollectionDialog({
                 rows={10}
                 className="font-mono text-xs"
               />
+              <CurlValidationLine text={curl} />
             </TabsContent>
           </Tabs>
         )}
@@ -411,5 +410,39 @@ export function ImportCollectionDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** Live check under the cURL box: what will be imported, or why it can't be. */
+export function CurlValidationLine({ text }: { text: string }) {
+  const check = useMemo(() => (text.trim() ? validateCurl(text) : null), [text])
+  if (!check) return null
+  if (!check.ok) {
+    return (
+      <p className="flex items-center gap-1.5 text-[11px] text-destructive">
+        <XCircle className="h-3.5 w-3.5 shrink-0" /> {check.error}
+      </p>
+    )
+  }
+  const r = check.request
+  const headerCount = r.headers.filter((h) => h.key.trim()).length
+  const paramCount = r.queryParams.filter((p) => p.key.trim()).length
+  return (
+    <div className="space-y-0.5 text-[11px]">
+      <p className="flex min-w-0 items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate">
+          Valid cURL — {r.method} {r.url}
+        </span>
+      </p>
+      <p className="pl-5 text-muted-foreground">
+        {paramCount} params · {headerCount} headers · body {r.body.type} · auth {r.auth.type}
+      </p>
+      {check.warnings.map((w) => (
+        <p key={w} className="pl-5 text-amber-600 dark:text-amber-400">
+          {w}
+        </p>
+      ))}
+    </div>
   )
 }

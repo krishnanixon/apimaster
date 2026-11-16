@@ -5,7 +5,8 @@ const COLLAPSED_COMPACT = 28
 const COLLAPSED_DEFAULT = 32
 const EXPANDED_MIN_COMPACT = 40
 const EXPANDED_MIN_DEFAULT = 44
-const EXPANDED_MAX = 64
+/** Grow to fit the content; only very long values scroll inside the field. */
+const EXPANDED_MAX = 320
 
 interface ExpandableFieldProps {
   value: string
@@ -55,7 +56,9 @@ export function ExpandableField({
     }
     el.style.height = 'auto'
     const min = compact ? EXPANDED_MIN_COMPACT : EXPANDED_MIN_DEFAULT
-    el.style.height = `${Math.min(Math.max(el.scrollHeight, min), EXPANDED_MAX)}px`
+    // scrollHeight excludes the border; add it back so no scrollbar appears.
+    const border = el.offsetHeight - el.clientHeight
+    el.style.height = `${Math.min(Math.max(el.scrollHeight + border, min), EXPANDED_MAX)}px`
   }, [value, expanded, compact])
 
   return (
@@ -89,7 +92,7 @@ export function ExpandableField({
         mono && 'font-mono',
         expanded
           ? 'resize-y overflow-auto whitespace-pre-wrap break-all py-1.5'
-          : 'resize-none overflow-x-auto overflow-y-hidden whitespace-nowrap py-1 leading-5',
+          : 'scrollbar-on-hover resize-none overflow-x-auto overflow-y-hidden whitespace-nowrap py-1 leading-5',
         className
       )}
       {...rest}

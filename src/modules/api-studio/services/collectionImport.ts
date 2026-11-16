@@ -13,6 +13,7 @@ import {
 } from '@shared/lib/importers'
 import type { ApiCollection, ApiRequest } from '../types/api.types'
 import { normalizeStoredRequest } from './graphql/model'
+import { looksLikeCurl, validateCurl } from './curlParser'
 import { importPostmanCollection } from './postman'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -95,4 +96,76 @@ export function importCollectionJson(json: string): { collection: ApiCollection;
     return { collection: result.collections[0], warnings: [...result.summary.skipped, ...result.summary.warnings] }
   }
   return importPostmanCollection(json)
+}
+
+export interface RequestImport {
+  requests: ApiRequest[]
+  /** What the text was recognised as, e.g. "cURL" or "Postman". */
+  formatLabel: string
+  warnings: string[]
+}
+
+const FORMAT_LABELS: Record<ImportFormat, string> = {
+  shurikly: 'Shurikly',
+  postman: 'Postman',
+  insomnia: 'Insomnia',
+  bruno: 'Bruno',
+  har: 'HAR',
+  openapi: 'OpenAPI',
+  curl: 'cURL'
+}
+
+function looksLikeStoredRequest(value: unknown): value is ApiRequest {
+  return (
+    isRecord(value) &&
+    typeof value.method === 'string' &&
+    typeof value.url === 'string' &&
+    Array.isArray(value.headers) &&
+    isRecord(value.body)
+  )
+}
+
+/**
+ * Reads one or a few requests out of pasted text or a file: a cURL command, a single
+ * Postman item, a Shurikly request, or any collection format (its requests, flattened).
+ * Throws with a readable message when nothing usable is found.
+ */
+export function importRequestsFromText(text: string): RequestImport {
+  const trimmed = text.trim()
+  if (!trimmed) throw new Error('Paste a cURL command or a request file')
+
+  if (looksLikeCurl(trimmed)) {
+    const result = validateCurl(trimmed)
+    if (!result.ok) throw new Error(result.error)
+    return { requests: [result.request], formatLabel: 'cURL', warnings: result.warnings }
+  }
+
+  let parsed: unknown = undefined
+  try {
+    parsed = JSON.parse(trimmed)
+  } catch {
+    // YAML (Insomnia / OpenAPI) is handled by importFromText below.
+  }
+
+  if (looksLikeStoredRequest(parsed)) {
+    const request = normalizeStoredRequest({ ...parsed, id: uuidv4(), folderId: null, updatedAt: new Date().toISOString() })
+    return { requests: [request], formatLabel: 'Shurikly request', warnings: [] }
+  }
+
+  // A single Postman item ({ name, request }) copied out of a collection file.
+  if (isRecord(parsed) && isRecord(parsed.request) && !parsed.info && !parsed.item) {
+    const wrapped = JSON.stringify({
+      info: { name: String(parsed.name ?? 'Request'), schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json' },
+      item: [parsed]
+    })
+    const { collection, warnings } = importPostmanCollection(wrapped)
+    return { requests: collection.requests.map((r) => ({ ...r, folderId: null })), formatLabel: 'Postman request', warnings }
+  }
+
+  const format = detectImportFormat(trimmed)
+  if (!format) throw new Error('Not recognised. Paste a cURL command, or a Postman, HAR, Insomnia or Shurikly export.')
+  const result = importFromText(trimmed, { skipStaticAssets: true })
+  const requests = result.collections.flatMap((c) => c.requests).map((r) => ({ ...r, id: uuidv4(), folderId: null }))
+  if (requests.length === 0) throw new Error(`No requests found in this ${FORMAT_LABELS[format]} file`)
+  return { requests, formatLabel: FORMAT_LABELS[format], warnings: [...result.summary.skipped, ...result.summary.warnings] }
 }

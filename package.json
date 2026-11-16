@@ -14,13 +14,13 @@
     "local-first",
     "ai"
   ],
-  "homepage": "https://github.com/shurikly/shurikly#readme",
+  "homepage": "https://github.com/krishnanixon/apimaster#readme",
   "bugs": {
-    "url": "https://github.com/shurikly/shurikly/issues"
+    "url": "https://github.com/krishnanixon/apimaster/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/shurikly/shurikly.git"
+    "url": "git+https://github.com/krishnanixon/apimaster.git"
   },
   "main": "./out/main/index.js",
   "author": "Wansify Ventures",
@@ -185,8 +185,8 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "shurikly",
-      "repo": "shurikly",
+      "owner": "krishnanixon",
+      "repo": "apimaster",
       "releaseType": "draft"
     }
   }

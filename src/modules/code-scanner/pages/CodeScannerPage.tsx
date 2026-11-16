@@ -193,7 +193,8 @@ function ScanResults({
   const [name, setName] = useState(result.projectName)
   const [baseUrl, setBaseUrl] = useState(result.baseUrl)
   const [createEnvironment, setCreateEnvironment] = useState(true)
-  const [validationTests, setValidationTests] = useState(true)
+  // Off by default so "Import N requests" is exactly what lands in the collection.
+  const [validationTests, setValidationTests] = useState(false)
 
   useEffect(() => {
     setName(result.projectName)
@@ -283,9 +284,14 @@ function ScanResults({
   const handleImport = () => {
     if (chosen.length === 0) return
     const imported = importScannedEndpoints(chosen, importOptions)
-    toast.success(`Created "${name.trim() || 'Scanned API'}" with ${imported.requests} requests`, {
-      description: environmentNote(imported.environment)
-    })
+    const tests = imported.validationRequests
+    toast.success(
+      `Created "${name.trim() || 'Scanned API'}" with ${imported.requests} ${imported.requests === 1 ? 'request' : 'requests'}` +
+        (tests ? ` + ${tests} validation ${tests === 1 ? 'test' : 'tests'}` : ''),
+      {
+        description: environmentNote(imported.environment)
+      }
+    )
     navigate('/')
   }
 
@@ -498,6 +504,7 @@ function ScanResults({
               {target === 'new' ? (
                 <Button onClick={handleImport} disabled={chosen.length === 0 || enrich.phase === 'running'}>
                   Import {chosen.length} {chosen.length === 1 ? 'request' : 'requests'}
+                  {importOptions.validationTests && ` + ${validationCount} ${validationCount === 1 ? 'test' : 'tests'}`}
                 </Button>
               ) : (
                 <Button onClick={handleReviewMerge} disabled={enrich.phase === 'running'}>

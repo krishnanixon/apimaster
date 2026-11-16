@@ -58,6 +58,11 @@ export interface MountFact {
   target: RouterRef
   auth: boolean
   line: number
+  /**
+   * Named like auth middleware (`use('/auth', authentication)`) but imported, so it may be a router.
+   * Linking decides: a router is mounted; anything else on a prefix-less `use` protects the parent.
+   */
+  gate?: boolean
 }
 
 export interface RouterFact {
@@ -134,6 +139,12 @@ const ROUTER_PARAM_NAMES = /^(app|router|server|fastify|instance)$/
 const ROUTER_TYPE_NAMES = /\b(Express|Application|Router|FastifyInstance)\b/
 const AUTH_HINT =
   /auth|protect|jwt|passport|guard|verify(Token|User|Jwt|Session)|require(d)?(User|Login|Auth|Admin)|isLoggedIn|ensureLoggedIn/i
+/**
+ * Role gates named `requireDoctor`, `requirePatient`, `requireRole('x')`, `requirePermission(...)`.
+ * Case-sensitive on purpose (camelCase role name); request-shape checks like `requireJson` are not auth.
+ */
+const ROLE_GATE = /^(require|ensure|only)[A-Z]\w*$/
+const NOT_ROLE_GATE = /^(require|ensure|only)(Json|Body|Fields?|Params?|Query|Headers?|ContentType|Https|Ssl|Feature|Env|Config|Files?|Upload|Multipart)/
 /** Middleware that mentions auth but doesn't require it (`auth.optional`, `passport.initialize()`, `authLimiter`). */
 const NOT_AUTH = /optional|initiali[sz]e|limit|session|cors|csrf/i
 const PLUGIN_WRAPPERS = /^(fp|fastifyPlugin)$/
@@ -525,7 +536,9 @@ export function collectServerFacts(sf: ts.SourceFile, resolveImport: ImportResol
     if (ts.isCallExpression(e)) return isAuthMiddleware(e.expression)
     if (!ts.isIdentifier(e) && !ts.isPropertyAccessExpression(e)) return false
     const name = e.getText(sf)
-    return AUTH_HINT.test(name) && !ROUTER_NAME.test(name) && !NOT_AUTH.test(name)
+    if (NOT_AUTH.test(name) || ROUTER_NAME.test(name)) return false
+    const last = name.split('.').pop() ?? name
+    return AUTH_HINT.test(name) || (ROLE_GATE.test(last) && !NOT_ROLE_GATE.test(last))
   }
 
   const resolveHandler = (expr: ts.Expression, depth = 0): FunctionNode | null => {
@@ -724,7 +737,15 @@ export function collectServerFacts(sf: ts.SourceFile, resolveImport: ImportResol
           PARSE_METHODS.has(node.expression.name.text) &&
           node.arguments[0]
         ) {
-          const source = skipOuter(node.arguments[node.expression.name.text === 'Check' ? 1 : 0] ?? node.arguments[0]).getText(sf)
+          let arg = skipOuter(node.arguments[node.expression.name.text === 'Check' ? 1 : 0] ?? node.arguments[0])
+          // `schema.safeParse(req.body ?? {})` / `(req.body || {})`: the fallback doesn't change what is read.
+          while (
+            ts.isBinaryExpression(arg) &&
+            (arg.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken || arg.operatorToken.kind === ts.SyntaxKind.BarBarToken)
+          ) {
+            arg = skipOuter(arg.left)
+          }
+          const source = arg.getText(sf)
           const target: SchemaTarget | null = /\.body$/.test(source) ? 'body' : /\.query$/.test(source) ? 'query' : null
           if (target) applySchema(node.expression.expression, target)
         }
@@ -910,7 +931,13 @@ export function collectServerFacts(sf: ts.SourceFile, resolveImport: ImportResol
 
     if (rest.length === 0) return
     if (rest.every(isAuthMiddleware)) {
-      // `router.use(requireAuth)` — protects everything registered on this router.
+      // `router.use(requireAuth)` protects everything registered on this router — unless the
+      // "middleware" is an imported router whose name happens to say auth (`use('/auth', authentication)`).
+      const imported = rest.map((target) => partialRef(target)).filter((ref): ref is PartialRef => ref?.kind === 'import')
+      if (imported.length === rest.length) {
+        for (const ref of imported) pendingMounts.push({ parentId: routerId, prefix, prefixResolved, target: ref, auth: false, gate: true, line: lineOf(node) })
+        return
+      }
       const router = routerById.get(routerId)
       if (router && !prefix) router.auth = true
       return
@@ -1016,7 +1043,9 @@ export function collectServerFacts(sf: ts.SourceFile, resolveImport: ImportResol
       for (const param of node.parameters) {
         if (!ts.isIdentifier(param.name)) continue
         const typed = param.type ? ROUTER_TYPE_NAMES.test(param.type.getText(sf)) : false
-        if (ROUTER_PARAM_NAMES.test(param.name.text) || typed) {
+        // `createRouter(app: SessionApp)`: a param named `app` with some other declared type is data, not a router.
+        const otherType = Boolean(param.type) && !typed && !/^(any|unknown)$/.test(param.type!.getText(sf).trim())
+        if ((ROUTER_PARAM_NAMES.test(param.name.text) && !otherType) || typed) {
           const id = declareParamRouter(param as ts.ParameterDeclaration & { name: ts.Identifier })
           if (!fnParamRouter.has(node)) fnParamRouter.set(node, id)
         }
@@ -1095,7 +1124,10 @@ export function collectServerFacts(sf: ts.SourceFile, resolveImport: ImportResol
     if (ref.kind !== 'fn') return ref
     const param = fnParamRouter.get(ref.node)
     const returned = fnReturnRouter.get(ref.node)
-    const id = ref.preferReturn ? (returned ?? param) : (param ?? returned)
+    // A factory that builds and returns its own router: that router holds the routes, even when the
+    // function also takes an `app`-like argument it never registers anything on.
+    const paramUsed = param !== undefined && (facts.routes.some((r) => r.routerId === param) || pendingMounts.some((m) => m.parentId === param))
+    const id = ref.preferReturn || (returned && !paramUsed) ? (returned ?? param) : (param ?? returned)
     return id ? { kind: 'local', id } : null
   }
 
@@ -1162,7 +1194,12 @@ export function linkServerRoutes(allFacts: ServerFileFacts[]): DetectedEndpoint[
   for (const facts of allFacts) {
     for (const mount of facts.mounts) {
       const childId = resolveRef(mount.target)
-      if (!childId || childId === mount.parentId || !routers.has(childId)) continue
+      if (!childId || childId === mount.parentId || !routers.has(childId)) {
+        // Not a router after all: it was auth middleware guarding the whole parent.
+        const parent = routers.get(mount.parentId)
+        if (mount.gate && !mount.prefix && parent) parent.auth = true
+        continue
+      }
       const list = children.get(mount.parentId) ?? []
       list.push({ childId, prefix: mount.prefix, prefixResolved: mount.prefixResolved, auth: mount.auth })
       children.set(mount.parentId, list)

@@ -25,7 +25,10 @@ export interface EnvironmentUse {
 
 export interface ImportScanResult {
   collectionId: string
+  /** One request per selected endpoint. */
   requests: number
+  /** Extra requests from "Validation tests" (each breaks one body rule). */
+  validationRequests: number
   /** Environment made active for `{{baseUrl}}`; `reused` when an existing one was updated. */
   environment?: EnvironmentUse
 }
@@ -71,9 +74,10 @@ function activateEnvironment(collectionName: string, variables: ScannedCollectio
 export function importScannedEndpoints(endpoints: DetectedEndpoint[], options: ImportScanOptions): ImportScanResult {
   const { collection, environmentVariables } = build(endpoints, options)
   useApiStudioStore.getState().addCollection(collection)
-  const requests = collection.requests.length
-  if (!options.createEnvironment) return { collectionId: collection.id, requests }
-  return { collectionId: collection.id, requests, environment: activateEnvironment(collection.name, environmentVariables) }
+  const validationRequests = collection.requests.filter((r) => r.scan?.key.includes('#validation:')).length
+  const counts = { collectionId: collection.id, requests: collection.requests.length - validationRequests, validationRequests }
+  if (!options.createEnvironment) return counts
+  return { ...counts, environment: activateEnvironment(collection.name, environmentVariables) }
 }
 
 /** Collections the scanner created (only those carry the tags a re-scan needs), newest first. */

@@ -126,7 +126,8 @@ export function registerApiStudioHandlers(getMainWindow: () => BrowserWindow | n
         properties: ['openFile']
       })
 
-      if (result.canceled || !result.filePaths[0]) return failure('Import cancelled')
+      // Not an error: the user closed the dialog. The renderer ignores this result.
+      if (result.canceled || !result.filePaths[0]) return { success: false, error: 'Import cancelled' }
 
       const content = await fs.readFile(result.filePaths[0], 'utf-8')
       return success(content)

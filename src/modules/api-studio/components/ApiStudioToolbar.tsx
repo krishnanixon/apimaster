@@ -188,7 +188,7 @@ export function ApiStudioToolbar({ tabId, onSave, onClear, onViewCode }: ApiStud
             <MoreHorizontal className="h-3.5 w-3.5" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuContent align="end" className="w-52">
           <DropdownMenuItem onSelect={startRename}>
             <Pencil className="h-3.5 w-3.5" /> Rename
           </DropdownMenuItem>
@@ -196,7 +196,7 @@ export function ApiStudioToolbar({ tabId, onSave, onClear, onViewCode }: ApiStud
             <Copy className="h-3.5 w-3.5" /> Copy as cURL
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={onViewCode}>
-            <Code2 className="h-3.5 w-3.5" /> Code snippet
+            <Code2 className="h-3.5 w-3.5" /> Export / code snippet…
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={onClear} className="text-destructive focus:text-destructive">
             <Trash2 className="h-3.5 w-3.5" /> Clear request

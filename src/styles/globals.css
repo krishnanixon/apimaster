@@ -1142,6 +1142,35 @@ html.theme-switching *::after {
   height: 8px;
 }
 
+/* Scrolls, but never shows a scrollbar (e.g. the request tab strip). */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Single-line fields that scroll sideways: a thin bar that only appears on
+   hover, so it neither clutters the row nor clips the text. */
+.scrollbar-on-hover::-webkit-scrollbar,
+[data-layout-style='compact'] .scrollbar-on-hover::-webkit-scrollbar {
+  height: 4px;
+}
+
+.scrollbar-on-hover::-webkit-scrollbar-thumb {
+  border: 0;
+  background-color: transparent;
+}
+
+.scrollbar-on-hover:hover::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.35);
+}
+
+.scrollbar-on-hover::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.55);
+}
+
 /* API Studio — CodeMirror JSON / script editors */
 .api-studio-editor .cm-editor {
   background: transparent !important;

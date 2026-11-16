@@ -1,13 +1,17 @@
 import type { ApiRequest, ApiCollection } from '../types/api.types'
 import { resolveRequest } from './requestBuilder'
 
-export type SnippetLanguage = 'curl' | 'javascript' | 'nodejs' | 'python'
+export type SnippetLanguage = 'curl' | 'http' | 'javascript' | 'nodejs' | 'python' | 'powershell' | 'go' | 'php'
 
 export const SNIPPET_LANGUAGES: { id: SnippetLanguage; label: string }[] = [
   { id: 'curl', label: 'cURL' },
+  { id: 'http', label: 'HTTP' },
   { id: 'javascript', label: 'JavaScript (fetch)' },
   { id: 'nodejs', label: 'Node.js (axios)' },
-  { id: 'python', label: 'Python (requests)' }
+  { id: 'python', label: 'Python (requests)' },
+  { id: 'powershell', label: 'PowerShell' },
+  { id: 'go', label: 'Go' },
+  { id: 'php', label: 'PHP (cURL)' }
 ]
 
 function buildFullUrl(url: string, params: Record<string, string>): string {
@@ -24,6 +28,19 @@ function escapeSingleQuotes(value: string): string {
 function bodyAsString(body: ReturnType<typeof resolveRequest>['body']): string | undefined {
   if (body.type === 'none') return undefined
   if (body.type === 'form-data') return undefined
+  if (body.type === 'x-www-form-urlencoded') {
+    // Stored one `key=value` per line; on the wire it is `a=1&b=2`.
+    return body.content
+      .split('\n')
+      .filter((line) => line.trim())
+      .map((line) => {
+        const eq = line.indexOf('=')
+        return eq === -1
+          ? encodeURIComponent(line)
+          : `${encodeURIComponent(line.slice(0, eq))}=${encodeURIComponent(line.slice(eq + 1))}`
+      })
+      .join('&')
+  }
   return body.content
 }
 
@@ -36,8 +53,10 @@ export function generateSnippet(
   const fullUrl = buildFullUrl(resolved.url, resolved.params)
   const body = bodyAsString(resolved.body)
   const headers = { ...resolved.headers }
-  if (resolved.body.type === 'json' && !headers['Content-Type'] && !headers['content-type']) {
-    headers['Content-Type'] = 'application/json'
+  const hasContentType = Object.keys(headers).some((k) => k.toLowerCase() === 'content-type')
+  if (resolved.body.type === 'json' && !hasContentType) headers['Content-Type'] = 'application/json'
+  if (resolved.body.type === 'x-www-form-urlencoded' && !hasContentType && body) {
+    headers['Content-Type'] = 'application/x-www-form-urlencoded'
   }
 
   switch (language) {
@@ -49,6 +68,14 @@ export function generateSnippet(
       return generateAxios(resolved.method, fullUrl, headers, body)
     case 'python':
       return generatePython(resolved.method, fullUrl, headers, body)
+    case 'http':
+      return generateHttp(resolved.method, fullUrl, headers, body)
+    case 'powershell':
+      return generatePowerShell(resolved.method, fullUrl, headers, body)
+    case 'go':
+      return generateGo(resolved.method, fullUrl, headers, body)
+    case 'php':
+      return generatePhp(resolved.method, fullUrl, headers, body)
     default:
       return ''
   }
@@ -129,4 +156,104 @@ function indent(text: string, levels: number): string {
     .split('\n')
     .map((line, i) => (i === 0 ? line : pad + line))
     .join('\n')
+}
+
+function generateHttp(method: string, url: string, headers: Record<string, string>, body: string | undefined): string {
+  let host = ''
+  let target = url
+  const match = /^([a-z]+:\/\/)([^/?#]+)(.*)$/i.exec(url)
+  if (match) {
+    host = match[2]
+    target = match[3] || '/'
+  }
+  const lines = [`${method} ${target} HTTP/1.1`]
+  if (host) lines.push(`Host: ${host}`)
+  for (const [key, value] of Object.entries(headers)) lines.push(`${key}: ${value}`)
+  if (body) lines.push('', body)
+  return lines.join('\n')
+}
+
+function psString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`
+}
+
+function generatePowerShell(method: string, url: string, headers: Record<string, string>, body: string | undefined): string {
+  const lines = ['$headers = @{']
+  for (const [key, value] of Object.entries(headers)) lines.push(`  ${psString(key)} = ${psString(value)}`)
+  lines.push('}')
+  if (body) lines.push(`$body = @'\n${body}\n'@`)
+  lines.push(
+    '',
+    `$response = Invoke-RestMethod -Uri ${psString(url)} -Method ${method} -Headers $headers${body ? ' -Body $body' : ''}`,
+    '$response | ConvertTo-Json -Depth 10'
+  )
+  return lines.join('\n')
+}
+
+function goString(value: string): string {
+  return value.includes('`') ? JSON.stringify(value) : `\`${value}\``
+}
+
+function generateGo(method: string, url: string, headers: Record<string, string>, body: string | undefined): string {
+  const lines = [
+    'package main',
+    '',
+    'import (',
+    '\t"fmt"',
+    '\t"io"',
+    '\t"net/http"',
+    ...(body ? ['\t"strings"'] : []),
+    ')',
+    '',
+    'func main() {',
+    ...(body ? [`\tpayload := strings.NewReader(${goString(body)})`] : []),
+    `\treq, err := http.NewRequest(${JSON.stringify(method)}, ${JSON.stringify(url)}, ${body ? 'payload' : 'nil'})`,
+    '\tif err != nil {',
+    '\t\tpanic(err)',
+    '\t}'
+  ]
+  for (const [key, value] of Object.entries(headers)) {
+    lines.push(`\treq.Header.Add(${JSON.stringify(key)}, ${JSON.stringify(value)})`)
+  }
+  lines.push(
+    '',
+    '\tres, err := http.DefaultClient.Do(req)',
+    '\tif err != nil {',
+    '\t\tpanic(err)',
+    '\t}',
+    '\tdefer res.Body.Close()',
+    '\tdata, _ := io.ReadAll(res.Body)',
+    '\tfmt.Println(res.Status)',
+    '\tfmt.Println(string(data))',
+    '}'
+  )
+  return lines.join('\n')
+}
+
+function phpString(value: string): string {
+  return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
+}
+
+function generatePhp(method: string, url: string, headers: Record<string, string>, body: string | undefined): string {
+  const headerLines = Object.entries(headers).map(([k, v]) => `    ${phpString(`${k}: ${v}`)},`)
+  const lines = [
+    '<?php',
+    '',
+    '$curl = curl_init();',
+    '',
+    'curl_setopt_array($curl, [',
+    `  CURLOPT_URL => ${phpString(url)},`,
+    '  CURLOPT_RETURNTRANSFER => true,',
+    `  CURLOPT_CUSTOMREQUEST => ${phpString(method)},`,
+    ...(body ? [`  CURLOPT_POSTFIELDS => ${phpString(body)},`] : []),
+    '  CURLOPT_HTTPHEADER => [',
+    ...headerLines,
+    '  ],',
+    ']);',
+    '',
+    '$response = curl_exec($curl);',
+    'curl_close($curl);',
+    'echo $response;'
+  ]
+  return lines.join('\n')
 }

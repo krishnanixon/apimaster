@@ -23,7 +23,7 @@ import type {
 import { createEmptyKeyValue, createEmptyRequest, syncPathParams } from '../services/requestBuilder'
 import { cancelRequest as cancelHttpRequest, executeResolved, finishExecution, prepareRequest } from '../services/apiClient'
 import { applyVariableChanges, createEmptyEnvironment, enabledVariableMap } from '../services/environment'
-import { parseCurl } from '../services/curlParser'
+import { validateCurl } from '../services/curlParser'
 import { exportToPostmanCollection } from '../services/postman'
 import { collectCollectionRequests, collectFolderRequests, runRequestList } from '../services/collectionRunner'
 import { getDescendantFolderIds, isFolderDescendant } from '../services/folderTree'
@@ -173,6 +173,8 @@ interface ApiStudioState {
   closeOtherTabs: (tabId: string) => void
   closeTabsToRight: (tabId: string) => void
   setActiveTab: (tabId: string) => void
+  /** Drag-and-drop reorder: puts `tabId` just before or after `targetTabId`. */
+  moveTab: (tabId: string, targetTabId: string, position: 'before' | 'after') => void
   updateDraft: (tabId: string, patch: Partial<ApiRequest>) => void
   setRequestView: (tabId: string, view: RequestTab) => void
   setResponseView: (tabId: string, view: ResponseTab) => void
@@ -228,6 +230,20 @@ interface ApiStudioState {
   applyCollectionFolder: (collection: ApiCollection, environments: ApiEnvironment[]) => void
   exportCollection: (collectionId: string) => string
   importCurlAsTab: (curl: string) => boolean
+  /**
+   * Postman-style paste: replaces the tab's method, URL, params, headers, body and auth with
+   * what the cURL command describes (name and saved location are kept). Offers Undo.
+   */
+  applyCurlToTab: (tabId: string, curl: string) => boolean
+  /** Adds requests (e.g. from a single-request import) to a collection, optionally in a folder. */
+  addRequestsToCollection: (collectionId: string, requests: ApiRequest[], folderId?: string | null) => void
+}
+
+const DEFAULT_REQUEST_NAMES = new Set(['New Request', 'Untitled Request', 'Imported from cURL', ''])
+
+function curlWarningText(warnings: string[]): string | undefined {
+  if (warnings.length === 0) return undefined
+  return warnings.length === 1 ? warnings[0] : `${warnings[0]} (+${warnings.length - 1} more)`
 }
 
 function findRequest(collections: ApiCollection[], collectionId: string, requestId: string): ApiRequest | undefined {
@@ -817,6 +833,19 @@ export const useApiStudioStore = create<ApiStudioState>()(
         }))
       },
 
+      moveTab: (tabId, targetTabId, position) => {
+        if (tabId === targetTabId) return
+        set((state) => {
+          const moving = state.tabs.find((t) => t.id === tabId)
+          if (!moving) return state
+          const rest = state.tabs.filter((t) => t.id !== tabId)
+          const targetIndex = rest.findIndex((t) => t.id === targetTabId)
+          if (targetIndex === -1) return state
+          const insertAt = position === 'before' ? targetIndex : targetIndex + 1
+          return { tabs: [...rest.slice(0, insertAt), moving, ...rest.slice(insertAt)] }
+        })
+      },
+
       setRequestView: (tabId, view) => {
         set((state) => ({ tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, requestView: view } : t)) }))
       },
@@ -1192,20 +1221,70 @@ export const useApiStudioStore = create<ApiStudioState>()(
       },
 
       importCurlAsTab: (curl) => {
-        try {
-          const request = parseCurl(curl)
-          if (!request.url.trim()) {
-            toast.error('Could not parse a URL from that cURL command')
-            return false
-          }
-          const tab = createTabState(request)
-          set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tab.id }))
-          toast.success('Imported request from cURL')
-          return true
-        } catch {
-          toast.error('Could not parse cURL command')
+        const result = validateCurl(curl)
+        if (!result.ok) {
+          toast.error(`Invalid cURL: ${result.error}`)
           return false
         }
+        const tab = createTabState(result.request)
+        set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tab.id }))
+        toast.success('Imported request from cURL', { description: curlWarningText(result.warnings) })
+        return true
+      },
+
+      applyCurlToTab: (tabId, curl) => {
+        const tab = get().tabs.find((t) => t.id === tabId)
+        if (!tab) return false
+        const result = validateCurl(curl)
+        if (!result.ok) {
+          toast.error(`Invalid cURL: ${result.error}`)
+          return false
+        }
+        const previous = tab.request
+        const previousDirty = tab.dirty
+        const parsed = result.request
+        const next: ApiRequest = {
+          ...previous,
+          requestType: 'http',
+          method: parsed.method,
+          url: parsed.url,
+          queryParams: parsed.queryParams,
+          pathParams: parsed.pathParams,
+          headers: parsed.headers,
+          body: parsed.body,
+          auth: parsed.auth,
+          network: parsed.network ?? previous.network,
+          timeoutMs: parsed.timeoutMs ?? previous.timeoutMs,
+          name: DEFAULT_REQUEST_NAMES.has(previous.name.trim()) ? parsed.name : previous.name,
+          updatedAt: new Date().toISOString()
+        }
+        set((state) => ({
+          tabs: state.tabs.map((t) =>
+            t.id === tabId ? { ...t, request: next, dirty: true, requestView: 'params' as RequestTab } : t
+          )
+        }))
+        toast.success('cURL imported into this request', {
+          description: curlWarningText(result.warnings),
+          action: {
+            label: 'Undo',
+            onClick: () =>
+              set((state) => ({
+                tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, request: previous, dirty: previousDirty } : t))
+              }))
+          }
+        })
+        return true
+      },
+
+      addRequestsToCollection: (collectionId, requests, folderId = null) => {
+        if (requests.length === 0) return
+        const now = new Date().toISOString()
+        const added = requests.map((r) => ({ ...r, id: uuidv4(), folderId, updatedAt: now }))
+        set((state) => ({
+          collections: state.collections.map((c) =>
+            c.id === collectionId ? { ...c, requests: [...c.requests, ...added], updatedAt: now } : c
+          )
+        }))
       },
 
       connectWebSocket: async (tabId) => {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Circle, Copy, Pencil, Plus, X } from 'lucide-react'
+import { Circle, Code2, Copy, Pencil, Plus, X } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import {
   ContextMenu,
@@ -11,6 +11,7 @@ import {
 import { useApiStudioStore } from '../stores/apiStudioStore'
 import { METHOD_COLORS, requestProtocolLabel } from '../types/api.types'
 import { ConfirmDialog } from './ConfirmDialog'
+import { RequestExportDialog } from './RequestExportDialog'
 
 const METHOD_BG: Record<string, string> = {
   GET: 'bg-emerald-500/15',
@@ -38,7 +39,39 @@ export function RequestTabBar() {
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
   const [nameDraft, setNameDraft] = useState('')
   const [pendingCloseId, setPendingCloseId] = useState<string | null>(null)
+  const [exportTabId, setExportTabId] = useState<string | null>(null)
+  const [dragTabId, setDragTabId] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ id: string; position: 'before' | 'after' } | null>(null)
+  const moveTab = useApiStudioStore((s) => s.moveTab)
+  const stripRef = useRef<HTMLDivElement>(null)
+  const collections = useApiStudioStore((s) => s.collections)
+  const exportTab = tabs.find((t) => t.id === exportTabId) ?? null
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Keep the active tab in view (the strip has no visible scrollbar).
+  useEffect(() => {
+    stripRef.current
+      ?.querySelector<HTMLElement>(`[data-tab-id="${activeTabId}"]`)
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [activeTabId, tabs.length])
+
+  // A vertical mouse wheel scrolls the tab strip sideways.
+  useEffect(() => {
+    const el = stripRef.current
+    if (!el) return
+    function onWheel(e: WheelEvent) {
+      if (!el || Math.abs(e.deltaY) <= Math.abs(e.deltaX) || el.scrollWidth <= el.clientWidth) return
+      e.preventDefault()
+      el.scrollLeft += e.deltaY
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
+  function endDrag() {
+    setDragTabId(null)
+    setDropTarget(null)
+  }
 
   useEffect(() => {
     if (!editingTabId) return
@@ -69,7 +102,7 @@ export function RequestTabBar() {
 
   return (
     <>
-    <div className="flex h-8 shrink-0 items-stretch overflow-x-auto border-b border-border/60 bg-muted/25">
+    <div ref={stripRef} className="scrollbar-none flex h-8 shrink-0 items-stretch overflow-x-auto border-b border-border/60 bg-muted/25">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId
         const method = requestProtocolLabel(tab.request)
@@ -78,6 +111,27 @@ export function RequestTabBar() {
           <ContextMenu key={tab.id}>
             <ContextMenuTrigger asChild>
               <div
+                data-tab-id={tab.id}
+                draggable={!isEditing}
+                onDragStart={(e) => {
+                  setDragTabId(tab.id)
+                  e.dataTransfer.effectAllowed = 'move'
+                  e.dataTransfer.setData('application/x-shurikly-tab', tab.id)
+                }}
+                onDragOver={(e) => {
+                  if (!dragTabId) return
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  const position = e.clientX < rect.left + rect.width / 2 ? 'before' : 'after'
+                  if (dropTarget?.id !== tab.id || dropTarget.position !== position) setDropTarget({ id: tab.id, position })
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  if (dragTabId && dropTarget) moveTab(dragTabId, dropTarget.id, dropTarget.position)
+                  endDrag()
+                }}
+                onDragEnd={endDrag}
                 onClick={() => {
                   if (!isEditing) setActiveTab(tab.id)
                 }}
@@ -92,7 +146,12 @@ export function RequestTabBar() {
                   }
                 }}
                 className={cn(
-                  'group flex max-w-[220px] shrink-0 cursor-pointer items-center gap-1.5 border-r border-border/40 px-2 text-xs transition-colors',
+                  'group relative flex max-w-[220px] shrink-0 cursor-pointer items-center gap-1.5 border-r border-border/40 px-2 text-xs transition-colors',
+                  dragTabId === tab.id && 'opacity-50',
+                  dropTarget?.id === tab.id && dragTabId !== tab.id &&
+                    (dropTarget.position === 'before'
+                      ? 'before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-primary'
+                      : 'after:absolute after:inset-y-1 after:right-0 after:w-0.5 after:rounded-full after:bg-primary'),
                   isActive
                     ? 'bg-background text-foreground'
                     : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'
@@ -154,6 +213,9 @@ export function RequestTabBar() {
               <ContextMenuItem onSelect={() => void copyTabAsCurl(tab.id)}>
                 <Copy className="h-3.5 w-3.5" /> Copy as cURL
               </ContextMenuItem>
+              <ContextMenuItem onSelect={() => setExportTabId(tab.id)}>
+                <Code2 className="h-3.5 w-3.5" /> Export…
+              </ContextMenuItem>
               <ContextMenuSeparator />
               <ContextMenuItem onSelect={() => requestClose(tab.id)}>Close</ContextMenuItem>
               <ContextMenuItem onSelect={() => closeOtherTabs(tab.id)}>Close others</ContextMenuItem>
@@ -181,6 +243,12 @@ export function RequestTabBar() {
         if (pendingCloseId) closeTab(pendingCloseId)
         setPendingCloseId(null)
       }}
+    />
+    <RequestExportDialog
+      open={exportTab !== null}
+      onOpenChange={(open) => !open && setExportTabId(null)}
+      request={exportTab?.request ?? null}
+      collection={exportTab?.collectionId ? collections.find((c) => c.id === exportTab.collectionId) : null}
     />
     </>
   )
